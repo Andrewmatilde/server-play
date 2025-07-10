@@ -1,0 +1,131 @@
+openapi: "3.0.3"
+info:
+  title: YCSB HTTP Server API
+  version: "1.0.0"
+  description: >-
+    OpenAPI specification for the YCSB HTTP Server implementing core YCSB operations A-F.
+security: []
+servers:
+  - url: http://localhost:8080
+paths:
+  /read:
+    get:
+      operationId: read
+      summary: Read a record by key
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KV'
+        '400':
+          description: Missing key or bad request
+        '404':
+          description: Record not found
+        '500':
+          description: Database error
+  /update:
+    post:
+      operationId: update
+      summary: Update an existing record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KV'
+      responses:
+        '204':
+          description: No Content
+        '400':
+          description: Bad Request
+        '500':
+          description: Database error
+  /insert:
+    post:
+      operationId: insert
+      summary: Insert a new record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KV'
+      responses:
+        '204':
+          description: No Content
+        '400':
+          description: Bad Request
+        '500':
+          description: Database error
+  /scan:
+    get:
+      operationId: scan
+      summary: Scan a range of records
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: count
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of key-value pairs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KV'
+        '400':
+          description: Invalid parameters
+        '500':
+          description: Database error
+  /rmw:
+    post:
+      operationId: rmw
+      summary: Read-Modify-Write operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - key
+              properties:
+                key:
+                  type: string
+                  description: Record key to perform RMW
+      responses:
+        '204':
+          description: No Content
+        '400':
+          description: Bad Request
+        '500':
+          description: Database error
+components:
+  schemas:
+    KV:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Record key
+        value:
+          type: string
+          description: Record value
+      required:
+        - key

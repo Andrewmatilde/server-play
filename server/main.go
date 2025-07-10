@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"strconv"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
-	dsn = flag.String("dsn", "user:pass@tcp(127.0.0.1:3306)/testdb", "MySQL DSN")
+	dsn = flag.String("dsn", "test.db", "SQLite database file path")
 	db  *sql.DB
 )
 
@@ -26,13 +26,23 @@ type KV struct {
 func main() {
 	flag.Parse()
 	var err error
-	db, err = sql.Open("mysql", *dsn)
+	db, err = sql.Open("sqlite3", *dsn)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
 	defer db.Close()
 	if err := db.Ping(); err != nil {
 		log.Fatalf("ping db: %v", err)
+	}
+
+	// 创建表（如果不存在）
+	createTableSQL := `
+	CREATE TABLE IF NOT EXISTS ycsb_kv (
+		k TEXT PRIMARY KEY,
+		v TEXT
+	);`
+	if _, err := db.Exec(createTableSQL); err != nil {
+		log.Fatalf("create table: %v", err)
 	}
 
 	http.HandleFunc("/read", readHandler)
@@ -94,7 +104,7 @@ func insertHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing key", http.StatusBadRequest)
 		return
 	}
-	_, err := db.Exec(`INSERT IGNORE INTO ycsb_kv (k,v) VALUES (?,?)`, kv.Key, kv.Value)
+	_, err := db.Exec(`INSERT OR IGNORE INTO ycsb_kv (k,v) VALUES (?,?)`, kv.Key, kv.Value)
 	if err != nil {
 		http.Error(w, "db error", http.StatusInternalServerError)
 		return

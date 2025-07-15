@@ -25,7 +25,6 @@ import (
 	"splay/pkg/config"
 	"splay/pkg/stats"
 	"splay/pkg/worker"
-	"sync"
 	"time"
 )
 
@@ -34,10 +33,6 @@ type Controller struct {
 	config         *config.Config
 	statsCollector *stats.Collector
 	httpClient     *client.ClientWithResponses
-	done           chan struct{}
-	wg             sync.WaitGroup
-	mu             sync.RWMutex
-	running        bool
 }
 
 func New(cfg *config.Config, statsCollector *stats.Collector, httpClient *client.ClientWithResponses) *Controller {
@@ -45,183 +40,73 @@ func New(cfg *config.Config, statsCollector *stats.Collector, httpClient *client
 		config:         cfg,
 		statsCollector: statsCollector,
 		httpClient:     httpClient,
-		done:           make(chan struct{}),
 	}
 }
 
 // Start 启动流量控制器
 func (rc *Controller) Start(ctx context.Context) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	
-	if rc.running {
-		return
-	}
-	
-	rc.running = true
-	
+
 	switch rc.config.Mode {
 	case "qps":
-		rc.wg.Add(1)
 		go rc.runQPSMode(ctx)
 	case "concurrency":
-		rc.wg.Add(1)
 		go rc.runConcurrencyMode(ctx)
 	default:
-		// 默认使用QPS模式
-		rc.wg.Add(1)
 		go rc.runQPSMode(ctx)
 	}
-}
-
-// Stop 停止流量控制器
-func (rc *Controller) Stop() {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	
-	if !rc.running {
-		return
-	}
-	
-	rc.running = false
-	close(rc.done)
-	rc.wg.Wait()
 }
 
 // runQPSMode QPS模式：按固定速率创建独立的goroutine执行请求
 func (rc *Controller) runQPSMode(ctx context.Context) {
-	defer rc.wg.Done()
-	
+
 	if rc.config.QPS <= 0 {
 		return
 	}
-	
-	// 计算请求间隔
+
 	interval := time.Duration(1000000000 / rc.config.QPS) // 纳秒
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	
-	// 添加并发限制，防止goroutine数量无限增长
-	maxConcurrentRequests := rc.config.QPS * 2 // 允许的最大并发请求数
-	if maxConcurrentRequests > 10000 {
-		maxConcurrentRequests = 10000 // 硬限制
-	}
-	semaphore := make(chan struct{}, maxConcurrentRequests)
-	
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-rc.done:
-			return
 		case <-ticker.C:
-			// 根据配置的比例选择操作类型
 			operation := rc.selectOperationType()
-			
-			// 非阻塞方式尝试获取信号量
-			select {
-			case semaphore <- struct{}{}:
-				// 为每个请求创建独立的goroutine
-				go func() {
-					defer func() { <-semaphore }() // 释放信号量
-					w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
-					w.ExecuteOperation(operation)
-				}()
-			default:
-				// 如果并发数已达到限制，丢弃这个请求
-				// 这样可以防止系统资源耗尽
-			}
+
+			w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
+			w.ExecuteOperation(operation)
 		}
 	}
 }
 
 // runConcurrencyMode 并发模式：维持固定数量的worker goroutine
 func (rc *Controller) runConcurrencyMode(ctx context.Context) {
-	defer rc.wg.Done()
-	
+
 	if rc.config.Concurrency <= 0 {
 		return
 	}
-	
-	// 创建工作队列
-	workChan := make(chan string, rc.config.Concurrency*2)
-	var workerWg sync.WaitGroup
-	
+
 	// 启动固定数量的worker goroutine
 	for i := 0; i < rc.config.Concurrency; i++ {
-		workerWg.Add(1)
 		go func(workerID int) {
-			defer workerWg.Done()
-			
 			w := worker.New(workerID, rc.httpClient, rc.statsCollector, rc.config)
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case operation := <-workChan:
+				default:
+					operation := rc.selectOperationType()
 					w.ExecuteOperation(operation)
 				}
 			}
 		}(i)
 	}
-	
-	// 持续生成工作项
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				close(workChan)
-				return
-			case <-rc.done:
-				close(workChan)
-				return
-			default:
-				operation := rc.selectOperationType()
-				select {
-				case workChan <- operation:
-				case <-ctx.Done():
-					return
-				case <-rc.done:
-					return
-				}
-			}
-		}
-	}()
-	
-	// 等待所有worker完成
-	workerWg.Wait()
+
+	<-ctx.Done()
 }
 
 // selectOperationType 根据配置的比例选择操作类型
 func (rc *Controller) selectOperationType() string {
 	return rc.config.GetOperationType(rand.Float64())
-}
-
-// IsRunning 检查是否正在运行
-func (rc *Controller) IsRunning() bool {
-	rc.mu.RLock()
-	defer rc.mu.RUnlock()
-	return rc.running
-}
-
-// UpdateConfig 更新配置（运行时调整）
-func (rc *Controller) UpdateConfig(cfg *config.Config) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	
-	// 只更新可以运行时调整的配置
-	rc.config.SensorDataRatio = cfg.SensorDataRatio
-	rc.config.SensorRWRatio = cfg.SensorRWRatio
-	rc.config.BatchRWRatio = cfg.BatchRWRatio
-	rc.config.QueryRatio = cfg.QueryRatio
-}
-
-// GetCurrentConfig 获取当前配置
-func (rc *Controller) GetCurrentConfig() *config.Config {
-	rc.mu.RLock()
-	defer rc.mu.RUnlock()
-	
-	// 返回配置的副本
-	configCopy := *rc.config
-	return &configCopy
 }

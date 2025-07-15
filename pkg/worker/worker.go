@@ -58,7 +58,7 @@ func (w *Worker) ExecuteOperation(operation string) {
 		w.doSensorQuery()
 	default:
 		// 未知操作类型，记录错误
-		w.statsCollector.PushResult(operation, 0, false)
+		w.statsCollector.PushResult(operation, 0, 0, false)
 	}
 }
 
@@ -82,7 +82,7 @@ func (w *Worker) doSensorDataUpload() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("sensor-data", latency, success)
+	w.statsCollector.PushResult("sensor-data", latency, priority, success)
 }
 
 // doSensorReadWrite 传感器读写操作
@@ -105,7 +105,7 @@ func (w *Worker) doSensorReadWrite() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("sensor-rw", latency, success)
+	w.statsCollector.PushResult("sensor-rw", latency, priority, success)
 }
 
 // doBatchSensorRW 批量传感器读写操作
@@ -137,7 +137,7 @@ func (w *Worker) doBatchSensorRW() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("batch-rw", latency, success)
+	w.statsCollector.PushResult("batch-rw", latency, 0, success)
 }
 
 // doSensorQuery 传感器数据查询
@@ -145,7 +145,7 @@ func (w *Worker) doSensorQuery() {
 	deviceID := w.generateDeviceID()
 	endTime := time.Now()
 	startTime := endTime.Add(-time.Hour) // 查询最近1小时的数据
-	limit := rand.Intn(100) + 1           // 限制 1-100 条记录
+	limit := rand.Intn(100) + 1          // 限制 1-100 条记录
 
 	request := client.GetSensorDataJSONRequestBody{
 		DeviceId:  deviceID,
@@ -165,7 +165,7 @@ func (w *Worker) doSensorQuery() {
 	latency := time.Since(reqStartTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("query", latency, success)
+	w.statsCollector.PushResult("query", latency, 0, success)
 }
 
 // generateDeviceID 生成设备ID
@@ -188,7 +188,7 @@ func (w *Worker) generateMetricName() string {
 func (w *Worker) generateValue() float64 {
 	// 70% 的概率生成正常值 (0-100)
 	// 30% 的概率生成异常值 (100-200)，触发告警
-	if rand.Float64() < 0.7 {
+	if rand.Float64() < 0.99 {
 		return rand.Float64() * 100
 	} else {
 		return 100 + rand.Float64()*100
@@ -217,7 +217,7 @@ func (w *Worker) generatePriority() int {
 func (w *Worker) generateRandomData() string {
 	// 根据配置生成指定大小范围的随机数据
 	size := rand.Intn(w.config.DataSizeMax-w.config.DataSizeMin+1) + w.config.DataSizeMin
-	
+
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, size)
 	for i := range b {

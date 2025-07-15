@@ -19,8 +19,8 @@
 package stats
 
 import (
+	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -32,7 +32,13 @@ type LatencyStats struct {
 	totalTime  int64   // 总延迟时间（纳秒）
 	maxLatency int64   // 最大延迟（纳秒）
 	minLatency int64   // 最小延迟（纳秒）
-	mu         sync.RWMutex
+
+	// 高优先级请求统计 (Priority >= 3)
+	highPriorityBuckets    []int64 // 高优先级请求的延迟桶
+	highPriorityTotalCount int64   // 高优先级请求总数
+	highPriorityTotalTime  int64   // 高优先级请求总延迟时间（纳秒）
+	highPriorityMaxLatency int64   // 高优先级请求最大延迟（纳秒）
+	highPriorityMinLatency int64   // 高优先级请求最小延迟（纳秒）
 }
 
 // 延迟桶定义（毫秒）
@@ -40,12 +46,14 @@ var latencyBuckets = []float64{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5
 
 func NewLatencyStats() *LatencyStats {
 	return &LatencyStats{
-		buckets:    make([]int64, len(latencyBuckets)+1), // +1 for >5000ms
-		minLatency: int64(^uint64(0) >> 1),               // 初始化为最大值
+		buckets:                make([]int64, len(latencyBuckets)+1), // +1 for >5000ms
+		minLatency:             int64(^uint64(0) >> 1),               // 初始化为最大值
+		highPriorityBuckets:    make([]int64, len(latencyBuckets)+1), // +1 for >5000ms
+		highPriorityMinLatency: int64(^uint64(0) >> 1),               // 初始化为最大值
 	}
 }
 
-func (ls *LatencyStats) Record(latency time.Duration) {
+func (ls *LatencyStats) Record(latency time.Duration, priority int) {
 	latencyMs := float64(latency.Nanoseconds()) / 1e6
 
 	atomic.AddInt64(&ls.totalCount, 1)
@@ -82,6 +90,36 @@ func (ls *LatencyStats) Record(latency time.Duration) {
 	}
 
 	atomic.AddInt64(&ls.buckets[bucketIndex], 1)
+
+	// 如果是高优先级请求 (Priority >= 3)，同时记录到高优先级统计中
+	if priority >= 3 {
+		atomic.AddInt64(&ls.highPriorityTotalCount, 1)
+		atomic.AddInt64(&ls.highPriorityTotalTime, latency.Nanoseconds())
+
+		// 更新高优先级最大最小延迟
+		for {
+			current := atomic.LoadInt64(&ls.highPriorityMaxLatency)
+			if latency.Nanoseconds() <= current {
+				break
+			}
+			if atomic.CompareAndSwapInt64(&ls.highPriorityMaxLatency, current, latency.Nanoseconds()) {
+				break
+			}
+		}
+
+		for {
+			current := atomic.LoadInt64(&ls.highPriorityMinLatency)
+			if latency.Nanoseconds() >= current {
+				break
+			}
+			if atomic.CompareAndSwapInt64(&ls.highPriorityMinLatency, current, latency.Nanoseconds()) {
+				break
+			}
+		}
+
+		// 记录到高优先级桶中
+		atomic.AddInt64(&ls.highPriorityBuckets[bucketIndex], 1)
+	}
 }
 
 func (ls *LatencyStats) GetStats() (float64, float64, float64, []int64) {
@@ -106,6 +144,29 @@ func (ls *LatencyStats) GetStats() (float64, float64, float64, []int64) {
 	return avgLatency, maxLatencyMs, minLatencyMs, buckets
 }
 
+// GetHighPriorityStats 获取高优先级请求的统计信息
+func (ls *LatencyStats) GetHighPriorityStats() (float64, float64, float64, []int64, int64) {
+	totalCount := atomic.LoadInt64(&ls.highPriorityTotalCount)
+	if totalCount == 0 {
+		return 0, 0, 0, make([]int64, len(ls.highPriorityBuckets)), 0
+	}
+
+	totalTime := atomic.LoadInt64(&ls.highPriorityTotalTime)
+	maxLatency := atomic.LoadInt64(&ls.highPriorityMaxLatency)
+	minLatency := atomic.LoadInt64(&ls.highPriorityMinLatency)
+
+	avgLatency := float64(totalTime) / float64(totalCount) / 1e6 // 转换为毫秒
+	maxLatencyMs := float64(maxLatency) / 1e6
+	minLatencyMs := float64(minLatency) / 1e6
+
+	buckets := make([]int64, len(ls.highPriorityBuckets))
+	for i := range buckets {
+		buckets[i] = atomic.LoadInt64(&ls.highPriorityBuckets[i])
+	}
+
+	return avgLatency, maxLatencyMs, minLatencyMs, buckets, totalCount
+}
+
 func (ls *LatencyStats) PrintDistribution() {
 	avgLatency, maxLatency, minLatency, buckets := ls.GetStats()
 	totalCount := atomic.LoadInt64(&ls.totalCount)
@@ -128,12 +189,32 @@ func (ls *LatencyStats) PrintDistribution() {
 	count := buckets[len(buckets)-1]
 	percentage := float64(count) * 100 / float64(totalCount)
 	fmt.Printf("    >5000ms: %d (%.1f%%)\n", count, percentage)
+
+	// 显示高优先级请求统计
+	highAvgLatency, highMaxLatency, highMinLatency, highBuckets, highTotalCount := ls.GetHighPriorityStats()
+	if highTotalCount > 0 {
+		fmt.Printf("\n  高优先级请求 (Priority≥3): %d 个请求\n", highTotalCount)
+		fmt.Printf("  高优先级平均=%.2fms, 最小=%.2fms, 最大=%.2fms\n", highAvgLatency, highMinLatency, highMaxLatency)
+		fmt.Printf("  高优先级延迟分布:\n")
+
+		for i, bucket := range latencyBuckets {
+			count := highBuckets[i]
+			percentage := float64(count) * 100 / float64(highTotalCount)
+			fmt.Printf("    ≤%.0fms: %d (%.1f%%)\n", bucket, count, percentage)
+		}
+
+		// 最后一个桶（>5000ms）
+		count := highBuckets[len(highBuckets)-1]
+		percentage := float64(count) * 100 / float64(highTotalCount)
+		fmt.Printf("    >5000ms: %d (%.1f%%)\n", count, percentage)
+	}
 }
 
 // Result 单个操作的统计结果
 type Result struct {
 	Operation string
 	Latency   time.Duration
+	Priority  int
 	Success   bool
 	Timestamp time.Time
 }
@@ -176,11 +257,9 @@ type Collector struct {
 
 	// 用于推送统计结果的通道
 	resultChan chan Result
-	done       chan struct{}
-	mu         sync.RWMutex
 }
 
-func NewCollector() *Collector {
+func NewCollector(ctx context.Context) *Collector {
 	now := time.Now()
 	sc := &Collector{
 		sensorDataStats: NewLatencyStats(),
@@ -190,21 +269,21 @@ func NewCollector() *Collector {
 		startTime:       now,
 		lastPrintTime:   now,
 		resultChan:      make(chan Result, 10000), // 缓冲通道
-		done:            make(chan struct{}),
 	}
 
 	// 启动统计处理协程
-	go sc.processResults()
+	go sc.processResults(ctx)
 
 	return sc
 }
 
 // PushResult 推送操作结果
-func (sc *Collector) PushResult(operation string, latency time.Duration, success bool) {
+func (sc *Collector) PushResult(operation string, latency time.Duration, priority int, success bool) {
 	select {
 	case sc.resultChan <- Result{
 		Operation: operation,
 		Latency:   latency,
+		Priority:  priority,
 		Success:   success,
 		Timestamp: time.Now(),
 	}:
@@ -215,12 +294,12 @@ func (sc *Collector) PushResult(operation string, latency time.Duration, success
 }
 
 // processResults 处理统计结果
-func (sc *Collector) processResults() {
+func (sc *Collector) processResults(ctx context.Context) {
 	for {
 		select {
 		case result := <-sc.resultChan:
 			sc.processResult(result)
-		case <-sc.done:
+		case <-ctx.Done():
 			// 处理剩余的结果
 			for {
 				select {
@@ -240,7 +319,7 @@ func (sc *Collector) processResult(result Result) {
 		atomic.AddInt64(&sc.sensorDataSent, 1)
 		if result.Success {
 			atomic.AddInt64(&sc.sensorDataOps, 1)
-			sc.sensorDataStats.Record(result.Latency)
+			sc.sensorDataStats.Record(result.Latency, result.Priority)
 		} else {
 			atomic.AddInt64(&sc.sensorDataErrors, 1)
 		}
@@ -248,7 +327,7 @@ func (sc *Collector) processResult(result Result) {
 		atomic.AddInt64(&sc.sensorRWSent, 1)
 		if result.Success {
 			atomic.AddInt64(&sc.sensorRWOps, 1)
-			sc.sensorRWStats.Record(result.Latency)
+			sc.sensorRWStats.Record(result.Latency, result.Priority)
 		} else {
 			atomic.AddInt64(&sc.sensorRWErrors, 1)
 		}
@@ -256,7 +335,7 @@ func (sc *Collector) processResult(result Result) {
 		atomic.AddInt64(&sc.batchRWSent, 1)
 		if result.Success {
 			atomic.AddInt64(&sc.batchRWOps, 1)
-			sc.batchRWStats.Record(result.Latency)
+			sc.batchRWStats.Record(result.Latency, result.Priority)
 		} else {
 			atomic.AddInt64(&sc.batchRWErrors, 1)
 		}
@@ -264,7 +343,7 @@ func (sc *Collector) processResult(result Result) {
 		atomic.AddInt64(&sc.querySent, 1)
 		if result.Success {
 			atomic.AddInt64(&sc.queryOps, 1)
-			sc.queryStats.Record(result.Latency)
+			sc.queryStats.Record(result.Latency, result.Priority)
 		} else {
 			atomic.AddInt64(&sc.queryErrors, 1)
 		}
@@ -318,10 +397,26 @@ func (sc *Collector) PrintRealtime() {
 	batchRWAvgLatency, _, _, _ := sc.batchRWStats.GetStats()
 	queryAvgLatency, _, _, _ := sc.queryStats.GetStats()
 
+	// 获取高优先级请求延迟统计
+	sensorDataHighAvgLatency, _, _, _, sensorDataHighCount := sc.sensorDataStats.GetHighPriorityStats()
+	sensorRWHighAvgLatency, _, _, _, sensorRWHighCount := sc.sensorRWStats.GetHighPriorityStats()
+	batchRWHighAvgLatency, _, _, _, batchRWHighCount := sc.batchRWStats.GetHighPriorityStats()
+	queryHighAvgLatency, _, _, _, queryHighCount := sc.queryStats.GetHighPriorityStats()
+
 	fmt.Printf("[%.1fs] 发送QPS: %.1f | 完成QPS: %.1f | 平均发送: %.1f | 平均完成: %.1f | 待处理: %d | 错误: %d\n",
 		totalElapsed, instantSendQPS, instantDoneQPS, avgSendQPS, avgDoneQPS, pending, totalErrors)
 	fmt.Printf("       延迟(ms): 上报%.1f 读写%.1f 批量%.1f 查询%.1f\n",
 		sensorDataAvgLatency, sensorRWAvgLatency, batchRWAvgLatency, queryAvgLatency)
+
+	// 显示高优先级请求统计
+	totalHighPriorityCount := sensorDataHighCount + sensorRWHighCount + batchRWHighCount + queryHighCount
+	if totalHighPriorityCount > 0 {
+		fmt.Printf("       高优先级延迟(ms): 上报%.1f(%d) 读写%.1f(%d) 批量%.1f(%d) 查询%.1f(%d)\n",
+			sensorDataHighAvgLatency, sensorDataHighCount,
+			sensorRWHighAvgLatency, sensorRWHighCount,
+			batchRWHighAvgLatency, batchRWHighCount,
+			queryHighAvgLatency, queryHighCount)
+	}
 
 	// 更新上次统计
 	sc.lastSensorDataSent = currentSensorDataSent
@@ -336,9 +431,6 @@ func (sc *Collector) PrintRealtime() {
 }
 
 func (sc *Collector) PrintFinalReport() {
-	// 停止统计处理
-	close(sc.done)
-
 	// 等待一小段时间确保所有统计结果都被处理
 	time.Sleep(100 * time.Millisecond)
 
@@ -355,6 +447,22 @@ func (sc *Collector) PrintFinalReport() {
 	fmt.Printf("  查询操作: %d (错误: %d)\n", atomic.LoadInt64(&sc.queryOps), atomic.LoadInt64(&sc.queryErrors))
 	fmt.Printf("待处理请求: %d\n", pending)
 	fmt.Printf("总错误数: %d\n", totalErrors)
+
+	// 显示高优先级请求统计
+	_, _, _, _, sensorDataHighCount := sc.sensorDataStats.GetHighPriorityStats()
+	_, _, _, _, sensorRWHighCount := sc.sensorRWStats.GetHighPriorityStats()
+	_, _, _, _, batchRWHighCount := sc.batchRWStats.GetHighPriorityStats()
+	_, _, _, _, queryHighCount := sc.queryStats.GetHighPriorityStats()
+	totalHighPriorityCount := sensorDataHighCount + sensorRWHighCount + batchRWHighCount + queryHighCount
+
+	if totalHighPriorityCount > 0 {
+		fmt.Printf("\n高优先级请求 (Priority≥3) 统计:\n")
+		fmt.Printf("  传感器数据上报: %d\n", sensorDataHighCount)
+		fmt.Printf("  传感器读写操作: %d\n", sensorRWHighCount)
+		fmt.Printf("  批量操作: %d\n", batchRWHighCount)
+		fmt.Printf("  查询操作: %d\n", queryHighCount)
+		fmt.Printf("  高优先级请求总数: %d (占比: %.1f%%)\n", totalHighPriorityCount, float64(totalHighPriorityCount)*100/float64(totalOps))
+	}
 
 	if totalElapsed > 0 {
 		fmt.Printf("平均发送 QPS: %.2f\n", float64(totalSent)/totalElapsed)

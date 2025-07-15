@@ -63,21 +63,28 @@ func (rc *Controller) runQPSMode(ctx context.Context) {
 		return
 	}
 
-	interval := time.Duration(1000000000 / rc.config.QPS) // 纳秒
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	interval := time.Duration(1000000000 / rc.config.QPS * 8) // 纳秒
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			operation := rc.selectOperationType()
+	for i := 0; i < 8; i++ {
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					go func() {
+						operation := rc.selectOperationType()
 
-			w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
-			w.ExecuteOperation(operation)
-		}
+						w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
+						w.ExecuteOperation(operation)
+					}()
+				}
+			}
+		}()
 	}
+	<-ctx.Done()
 }
 
 // runConcurrencyMode 并发模式：维持固定数量的worker goroutine

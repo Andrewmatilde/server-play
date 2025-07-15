@@ -186,8 +186,8 @@ func (w *Worker) generateMetricName() string {
 
 // generateValue 生成传感器数值
 func (w *Worker) generateValue() float64 {
-	// 70% 的概率生成正常值 (0-100)
-	// 30% 的概率生成异常值 (100-200)，触发告警
+	// 99% 的概率生成正常值 (0-100)
+	// 1% 的概率生成异常值 (100-200)，触发告警
 	if rand.Float64() < 0.99 {
 		return rand.Float64() * 100
 	} else {
@@ -220,8 +220,10 @@ func (w *Worker) generateRandomData() string {
 
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, size)
+	charId := rand.Intn(len(charset))
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		b[i] = charset[charId]
+		charId = (charId + 3) >> 4 % len(charset)
 	}
 	return string(b)
 }

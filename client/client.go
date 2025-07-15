@@ -39,16 +39,10 @@ const (
 	SensorDataMetricNameVoltage     SensorDataMetricName = "voltage"
 )
 
-// BatchSensorReadWriteRequest defines model for BatchSensorReadWriteRequest.
-type BatchSensorReadWriteRequest struct {
-	// Data 批量传感器数据数组
-	Data []SensorReadWriteRequest `json:"data"`
-}
-
-// BatchSensorReadWriteResponse defines model for BatchSensorReadWriteResponse.
-type BatchSensorReadWriteResponse struct {
+// BatchSensorReadWriteData defines model for BatchSensorReadWriteData.
+type BatchSensorReadWriteData struct {
 	// Results 每个数据项的处理结果
-	Results *[]SensorReadWriteResponse `json:"results,omitempty"`
+	Results *[]SensorReadWriteData `json:"results,omitempty"`
 
 	// Status 批量操作状态
 	Status *string `json:"status,omitempty"`
@@ -60,32 +54,14 @@ type BatchSensorReadWriteResponse struct {
 	TotalProcessed *int `json:"total_processed,omitempty"`
 }
 
-// GetSensorDataRequest defines model for GetSensorDataRequest.
-type GetSensorDataRequest struct {
-	// DeviceId 设备唯一标识符
-	DeviceId string `json:"device_id"`
-
-	// EndTime 查询结束时间（RFC3339格式）
-	EndTime time.Time `json:"end_time"`
-
-	// Limit 返回记录数限制（默认1000，最大10000）
-	Limit *int `json:"limit,omitempty"`
-
-	// MetricName 指标名称（可选，不指定则查询所有指标）
-	MetricName *GetSensorDataRequestMetricName `json:"metric_name,omitempty"`
-
-	// Offset 分页偏移量（默认0）
-	Offset *int `json:"offset,omitempty"`
-
-	// StartTime 查询开始时间（RFC3339格式）
-	StartTime time.Time `json:"start_time"`
+// BatchSensorReadWriteRequest defines model for BatchSensorReadWriteRequest.
+type BatchSensorReadWriteRequest struct {
+	// Data 批量传感器数据数组
+	Data []SensorReadWriteRequest `json:"data"`
 }
 
-// GetSensorDataRequestMetricName 指标名称（可选，不指定则查询所有指标）
-type GetSensorDataRequestMetricName string
-
-// GetSensorDataResponse defines model for GetSensorDataResponse.
-type GetSensorDataResponse struct {
+// GetSensorDataData defines model for GetSensorDataData.
+type GetSensorDataData struct {
 	// Count 实际返回的记录数
 	Count *int `json:"count,omitempty"`
 
@@ -117,8 +93,32 @@ type GetSensorDataResponse struct {
 	TotalCount *int64 `json:"total_count,omitempty"`
 }
 
-// HealthResponse defines model for HealthResponse.
-type HealthResponse struct {
+// GetSensorDataRequest defines model for GetSensorDataRequest.
+type GetSensorDataRequest struct {
+	// DeviceId 设备唯一标识符
+	DeviceId string `json:"device_id"`
+
+	// EndTime 查询结束时间（RFC3339格式）
+	EndTime time.Time `json:"end_time"`
+
+	// Limit 返回记录数限制（默认1000，最大10000）
+	Limit *int `json:"limit,omitempty"`
+
+	// MetricName 指标名称（可选，不指定则查询所有指标）
+	MetricName *GetSensorDataRequestMetricName `json:"metric_name,omitempty"`
+
+	// Offset 分页偏移量（默认0）
+	Offset *int `json:"offset,omitempty"`
+
+	// StartTime 查询开始时间（RFC3339格式）
+	StartTime time.Time `json:"start_time"`
+}
+
+// GetSensorDataRequestMetricName 指标名称（可选，不指定则查询所有指标）
+type GetSensorDataRequestMetricName string
+
+// HealthData defines model for HealthData.
+type HealthData struct {
 	// Status 健康状态
 	Status *string `json:"status,omitempty"`
 
@@ -180,29 +180,8 @@ type SensorDataRecord struct {
 	Value *float64 `json:"value,omitempty"`
 }
 
-// SensorReadWriteRequest defines model for SensorReadWriteRequest.
-type SensorReadWriteRequest struct {
-	// Data 随机负载数据，用于增大传输量进行压测
-	Data *string `json:"data,omitempty"`
-
-	// DeviceId 设备唯一标识符
-	DeviceId string `json:"device_id"`
-
-	// MetricName 指标名称
-	MetricName string `json:"metric_name"`
-
-	// NewValue 新的传感器数值
-	NewValue float64 `json:"new_value"`
-
-	// Priority 优先级（1:高 2:中 3:低）
-	Priority *int `json:"priority,omitempty"`
-
-	// Timestamp 时间戳（RFC3339格式）
-	Timestamp time.Time `json:"timestamp"`
-}
-
-// SensorReadWriteResponse defines model for SensorReadWriteResponse.
-type SensorReadWriteResponse struct {
+// SensorReadWriteData defines model for SensorReadWriteData.
+type SensorReadWriteData struct {
 	// Alert 告警信息（可选）
 	Alert *string `json:"alert,omitempty"`
 
@@ -228,8 +207,29 @@ type SensorReadWriteResponse struct {
 	Timestamp *time.Time `json:"timestamp,omitempty"`
 }
 
-// StatsResponse defines model for StatsResponse.
-type StatsResponse struct {
+// SensorReadWriteRequest defines model for SensorReadWriteRequest.
+type SensorReadWriteRequest struct {
+	// Data 随机负载数据，用于增大传输量进行压测
+	Data *string `json:"data,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId string `json:"device_id"`
+
+	// MetricName 指标名称
+	MetricName string `json:"metric_name"`
+
+	// NewValue 新的传感器数值
+	NewValue float64 `json:"new_value"`
+
+	// Priority 优先级（1:高 2:中 3:低）
+	Priority *int `json:"priority,omitempty"`
+
+	// Timestamp 时间戳（RFC3339格式）
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// StatsData defines model for StatsData.
+type StatsData struct {
 	// PriorityStats 按优先级统计
 	PriorityStats *map[string]int64 `json:"priority_stats,omitempty"`
 
@@ -240,8 +240,8 @@ type StatsResponse struct {
 	TotalRecords *int64 `json:"total_records,omitempty"`
 }
 
-// SuccessResponse defines model for SuccessResponse.
-type SuccessResponse struct {
+// SuccessData defines model for SuccessData.
+type SuccessData struct {
 	// Message 操作信息
 	Message *string `json:"message,omitempty"`
 
@@ -768,7 +768,7 @@ type ClientWithResponsesInterface interface {
 type BatchSensorReadWriteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *BatchSensorReadWriteResponse
+	JSON200      *BatchSensorReadWriteData
 }
 
 // Status returns HTTPResponse.Status
@@ -790,7 +790,7 @@ func (r BatchSensorReadWriteResponse) StatusCode() int {
 type GetSensorDataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *GetSensorDataResponse
+	JSON200      *GetSensorDataData
 }
 
 // Status returns HTTPResponse.Status
@@ -812,7 +812,7 @@ func (r GetSensorDataResponse) StatusCode() int {
 type UploadSensorDataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *SuccessResponse
+	JSON200      *SuccessData
 }
 
 // Status returns HTTPResponse.Status
@@ -834,7 +834,7 @@ func (r UploadSensorDataResponse) StatusCode() int {
 type SensorReadWriteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *SensorReadWriteResponse
+	JSON200      *SensorReadWriteData
 }
 
 // Status returns HTTPResponse.Status
@@ -856,7 +856,7 @@ func (r SensorReadWriteResponse) StatusCode() int {
 type GetStatsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *StatsResponse
+	JSON200      *StatsData
 }
 
 // Status returns HTTPResponse.Status
@@ -878,7 +878,7 @@ func (r GetStatsResponse) StatusCode() int {
 type HealthCheckResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *HealthResponse
+	JSON200      *HealthData
 }
 
 // Status returns HTTPResponse.Status
@@ -998,7 +998,7 @@ func ParseBatchSensorReadWriteResponse(rsp *http.Response) (*BatchSensorReadWrit
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest BatchSensorReadWriteResponse
+		var dest BatchSensorReadWriteData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1024,7 +1024,7 @@ func ParseGetSensorDataResponse(rsp *http.Response) (*GetSensorDataResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest GetSensorDataResponse
+		var dest GetSensorDataData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1050,7 +1050,7 @@ func ParseUploadSensorDataResponse(rsp *http.Response) (*UploadSensorDataRespons
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SuccessResponse
+		var dest SuccessData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1076,7 +1076,7 @@ func ParseSensorReadWriteResponse(rsp *http.Response) (*SensorReadWriteResponse,
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest SensorReadWriteResponse
+		var dest SensorReadWriteData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1102,7 +1102,7 @@ func ParseGetStatsResponse(rsp *http.Response) (*GetStatsResponse, error) {
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest StatsResponse
+		var dest StatsData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1128,7 +1128,7 @@ func ParseHealthCheckResponse(rsp *http.Response) (*HealthCheckResponse, error) 
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest HealthResponse
+		var dest HealthData
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

@@ -57,7 +57,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: '#/components/schemas/HealthData'
               example:
                 status: "healthy"
                 time: "2024-01-01T10:00:00Z"
@@ -94,7 +94,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
+                $ref: '#/components/schemas/SuccessData'
               example:
                 status: "success"
                 message: "Data inserted successfully"
@@ -174,7 +174,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GetSensorDataResponse'
+                $ref: '#/components/schemas/GetSensorDataData'
               example:
                 status: "success"
                 device_id: "factory_001_device_001"
@@ -266,7 +266,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SensorReadWriteResponse'
+                $ref: '#/components/schemas/SensorReadWriteData'
               examples:
                 normal_value:
                   summary: 正常值示例
@@ -349,7 +349,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BatchSensorReadWriteResponse'
+                  $ref: '#/components/schemas/BatchSensorReadWriteData'
               example:
                 status: "success"
                 total_processed: 3
@@ -407,7 +407,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StatsResponse'
+                $ref: '#/components/schemas/StatsData'
               example:
                 total_records: 1500000
                 priority_stats:
@@ -520,7 +520,7 @@ components:
           minimum: 0
           default: 0
 
-    GetSensorDataResponse:
+    GetSensorDataData:
       type: object
       properties:
         status:
@@ -653,7 +653,7 @@ components:
           example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
           maxLength: 65535
 
-    SensorReadWriteResponse:
+    SensorReadWriteData:
       type: object
       properties:
         status:
@@ -705,7 +705,7 @@ components:
           minItems: 1
           maxItems: 1000
 
-    BatchSensorReadWriteResponse:
+    BatchSensorReadWriteData:
       type: object
       properties:
         status:
@@ -724,9 +724,9 @@ components:
           type: array
           description: 每个数据项的处理结果
           items:
-            $ref: '#/components/schemas/SensorReadWriteResponse'
+            $ref: '#/components/schemas/SensorReadWriteData'
 
-    HealthResponse:
+    HealthData:
       type: object
       properties:
         status:
@@ -739,7 +739,7 @@ components:
           description: 当前时间
           example: "2024-01-01T10:00:00Z"
 
-    SuccessResponse:
+    SuccessData:
       type: object
       properties:
         status:
@@ -751,7 +751,7 @@ components:
           description: 操作信息
           example: "Data inserted successfully"
 
-    StatsResponse:
+    StatsData:
       type: object
       properties:
         total_records:

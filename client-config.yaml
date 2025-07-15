@@ -3,4 +3,3 @@ output: client/client.go
 generate:
   client: true
   models: true
-  embedded-spec: true 

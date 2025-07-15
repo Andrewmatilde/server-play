@@ -1,131 +1,789 @@
 openapi: "3.0.3"
 info:
-  title: YCSB HTTP Server API
+  title: Bench Server - 时序数据存储系统 API
   version: "1.0.0"
   description: >-
-    OpenAPI specification for the YCSB HTTP Server implementing core YCSB operations A-F.
-security: []
+    基于Go语言实现的高性能时序数据存储HTTP服务器API文档。
+    
+    本系统支持传感器数据上报、读写操作、批量处理等功能，
+    所有数据最终持久化至MySQL作为时序数据库。
+    
+    ## 功能特性
+    - 传感器数据上报
+    - 传感器数据读写操作（支持事务）
+    - 批量传感器数据读写操作
+    - 系统统计信息查询
+    - 健康检查
+    
+    ## 阈值监控
+    系统会自动监控传感器数值，当数值超过100时：
+    - 自动提升优先级为1（高优先级）
+    - 记录告警信息
+    - 更新设备状态表
+  contact:
+    name: API支持
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
 servers:
   - url: http://localhost:8080
+    description: 开发环境服务器
+  - url: https://api.example.com
+    description: 生产环境服务器
+
+security: []
+
+tags:
+  - name: health
+    description: 健康检查相关接口
+  - name: sensor
+    description: 传感器数据相关接口
+  - name: stats
+    description: 统计信息相关接口
+
 paths:
-  /read:
+  /health:
     get:
-      operationId: read
-      summary: Read a record by key
-      parameters:
-        - name: key
-          in: query
-          required: true
-          schema:
-            type: string
+      tags:
+        - health
+      operationId: healthCheck
+      summary: 健康检查
+      description: 检查服务器和数据库连接状态
       responses:
         '200':
-          description: Successful read
+          description: 服务器健康
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/KV'
-        '400':
-          description: Missing key or bad request
-        '404':
-          description: Record not found
-        '500':
-          description: Database error
-  /update:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                time: "2024-01-01T10:00:00Z"
+        '503':
+          description: 服务不可用
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Database connection failed"
+
+  /api/sensor-data:
     post:
-      operationId: update
-      summary: Update an existing record
+      tags:
+        - sensor
+      operationId: uploadSensorData
+      summary: 传感器数据上报
+      description: 上报单个传感器数据到时序数据库
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/KV'
-      responses:
-        '204':
-          description: No Content
-        '400':
-          description: Bad Request
-        '500':
-          description: Database error
-  /insert:
-    post:
-      operationId: insert
-      summary: Insert a new record
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/KV'
-      responses:
-        '204':
-          description: No Content
-        '400':
-          description: Bad Request
-        '500':
-          description: Database error
-  /scan:
-    get:
-      operationId: scan
-      summary: Scan a range of records
-      parameters:
-        - name: start
-          in: query
-          required: true
-          schema:
-            type: integer
-        - name: count
-          in: query
-          required: true
-          schema:
-            type: integer
+              $ref: '#/components/schemas/SensorData'
+            example:
+              timestamp: "2024-01-01T10:00:00Z"
+              device_id: "factory_001_device_001"
+              metric_name: "temperature"
+              value: 23.5
+              priority: 1
       responses:
         '200':
-          description: List of key-value pairs
+          description: 数据上报成功
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/KV'
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                status: "success"
+                message: "Data inserted successfully"
         '400':
-          description: Invalid parameters
+          description: 请求参数错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                missing_fields:
+                  value: "Missing required fields"
+                invalid_json:
+                  value: "Invalid JSON format"
+        '405':
+          description: 方法不允许
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Only POST method allowed"
         '500':
-          description: Database error
-  /rmw:
+          description: 数据库错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Database error"
+
+  /api/get-sensor-data:
     post:
-      operationId: rmw
-      summary: Read-Modify-Write operation
+      tags:
+        - sensor
+      operationId: getSensorData
+      summary: 查询传感器时序数据
+      description: >-
+        根据设备ID和时间范围查询传感器历史数据。
+        
+        功能特性：
+        - 支持按设备ID查询
+        - 支持时间范围过滤（start_time 到 end_time）
+        - 可选择特定指标类型（metric_name）
+        - 支持分页查询（limit, offset）
+        - 返回数据预览和完整统计信息
+        - 按时间倒序排列（最新数据在前）
+        
+        查询限制：
+        - 单次查询最多返回10000条记录
+        - 默认限制1000条记录
+        - 数据字段只返回前100个字符预览
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - key
-              properties:
-                key:
-                  type: string
-                  description: Record key to perform RMW
+              $ref: '#/components/schemas/GetSensorDataRequest'
+            examples:
+              query_all_metrics:
+                summary: 查询设备所有指标
+                value:
+                  device_id: "factory_001_device_001"
+                  start_time: "2024-01-01T00:00:00Z"
+                  end_time: "2024-01-01T23:59:59Z"
+                  limit: 100
+                  offset: 0
+              query_specific_metric:
+                summary: 查询特定指标
+                value:
+                  device_id: "factory_001_device_001"
+                  metric_name: "temperature"
+                  start_time: "2024-01-01T10:00:00Z"
+                  end_time: "2024-01-01T11:00:00Z"
+                  limit: 50
       responses:
-        '204':
-          description: No Content
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSensorDataResponse'
+              example:
+                status: "success"
+                device_id: "factory_001_device_001"
+                metric_name: "temperature"
+                start_time: "2024-01-01T10:00:00Z"
+                end_time: "2024-01-01T11:00:00Z"
+                total_count: 150
+                limit: 50
+                offset: 0
+                count: 50
+                data:
+                  - id: 12345
+                    timestamp: "2024-01-01T10:59:30Z"
+                    device_id: "factory_001_device_001"
+                    metric_name: "temperature"
+                    value: 25.8
+                    priority: 2
+                    data_preview: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
+                    data_length: 1024
+                    created_at: "2024-01-01T10:59:30Z"
+                  - id: 12344
+                    timestamp: "2024-01-01T10:59:00Z"
+                    device_id: "factory_001_device_001"
+                    metric_name: "temperature"
+                    value: 24.2
+                    priority: 2
+                    data_preview: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6NTEyLCJyYW5kb20iOiJhYmNkZWZnaGlqa2w="
+                    data_length: 512
+                    created_at: "2024-01-01T10:59:00Z"
         '400':
-          description: Bad Request
+          description: 请求参数错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                missing_fields:
+                  value: "Missing required fields: device_id, start_time, end_time"
+                invalid_time_format:
+                  value: "Invalid start_time format (RFC3339 required)"
+                invalid_time_range:
+                  value: "start_time must be before end_time"
+        '405':
+          description: 方法不允许
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Only POST method allowed"
         '500':
-          description: Database error
+          description: 数据库错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Database error"
+
+  /api/sensor-rw:
+    post:
+      tags:
+        - sensor
+      operationId: sensorReadWrite
+      summary: 传感器数据读写操作
+      description: >-
+        执行传感器数据读写操作，包含事务处理。
+        
+        操作流程：
+        1. 读取当前设备的最新值
+        2. 检查新值是否超过阈值（100）
+        3. 如果超过阈值，自动提升优先级并记录告警
+        4. 插入新记录
+        5. 更新设备状态表
+        6. 所有操作在事务中完成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorReadWriteRequest'
+            example:
+              device_id: "factory_001_device_001"
+              metric_name: "temperature"
+              new_value: 105.5
+              timestamp: "2024-01-01T10:00:00Z"
+              priority: 2
+      responses:
+        '200':
+          description: 读写操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorReadWriteResponse'
+              examples:
+                normal_value:
+                  summary: 正常值示例
+                  value:
+                    status: "success"
+                    device_id: "factory_001_device_001"
+                    metric_name: "temperature"
+                    previous_value: 25.5
+                    new_value: 26.5
+                    priority: 2
+                    timestamp: "2024-01-01T10:00:00Z"
+                alert_value:
+                  summary: 告警值示例
+                  value:
+                    status: "success"
+                    device_id: "factory_001_device_001"
+                    metric_name: "temperature"
+                    previous_value: 25.5
+                    new_value: 105.5
+                    priority: 1
+                    timestamp: "2024-01-01T10:00:00Z"
+                    alert: "High value alert: 105.50 exceeds threshold"
+        '400':
+          description: 请求参数错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                missing_fields:
+                  value: "Missing required fields"
+                invalid_timestamp:
+                  value: "Invalid timestamp format"
+        '405':
+          description: 方法不允许
+        '500':
+          description: 数据库错误
+
+  /api/batch-sensor-rw:
+    post:
+      tags:
+        - sensor
+      operationId: batchSensorReadWrite
+      summary: 批量传感器数据读写操作
+      description: >-
+        批量执行传感器数据读写操作，所有操作在同一事务中完成。
+        
+        特性：
+        - 支持最多1000条记录的批量处理
+        - 自动阈值检查和告警处理
+        - 事务保证数据一致性
+        - 详细的处理结果反馈
+        - 统计总处理数量和告警数量
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchSensorReadWriteRequest'
+            example:
+              data:
+                - device_id: "factory_001_device_001"
+                  metric_name: "temperature"
+                  new_value: 105.5
+                  timestamp: "2024-01-01T10:00:00Z"
+                  priority: 1
+                - device_id: "factory_001_device_002"
+                  metric_name: "pressure"
+                  new_value: 85.3
+                  timestamp: "2024-01-01T10:00:01Z"
+                  priority: 2
+                - device_id: "factory_001_device_003"
+                  metric_name: "voltage"
+                  new_value: 120.8
+                  timestamp: "2024-01-01T10:00:02Z"
+                  priority: 1
+      responses:
+        '200':
+          description: 批量读写操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSensorReadWriteResponse'
+              example:
+                status: "success"
+                total_processed: 3
+                total_alerts: 2
+                results:
+                  - device_id: "factory_001_device_001"
+                    metric_name: "temperature"
+                    previous_value: 25.5
+                    new_value: 105.5
+                    priority: 1
+                    timestamp: "2024-01-01T10:00:00Z"
+                    status: "success"
+                    alert: "High value alert: 105.50 exceeds threshold"
+                  - device_id: "factory_001_device_002"
+                    metric_name: "pressure"
+                    previous_value: 101.3
+                    new_value: 85.3
+                    priority: 2
+                    timestamp: "2024-01-01T10:00:01Z"
+                    status: "success"
+                  - device_id: "factory_001_device_003"
+                    metric_name: "voltage"
+                    previous_value: 220.0
+                    new_value: 120.8
+                    priority: 1
+                    timestamp: "2024-01-01T10:00:02Z"
+                    status: "success"
+                    alert: "High value alert: 120.80 exceeds threshold"
+        '400':
+          description: 请求参数错误
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                empty_data:
+                  value: "Empty data list"
+                too_many_records:
+                  value: "Too many records (max 1000)"
+        '405':
+          description: 方法不允许
+        '500':
+          description: 数据库错误
+
+  /api/stats:
+    get:
+      tags:
+        - stats
+      operationId: getStats
+      summary: 获取系统统计信息
+      description: 获取数据库中的统计信息，包括总记录数、按优先级统计、最近24小时数据量等
+      responses:
+        '200':
+          description: 统计信息获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+              example:
+                total_records: 1500000
+                priority_stats:
+                  1: 50000
+                  2: 1200000
+                  3: 250000
+                recent_24h_count: 86400
+        '500':
+          description: 数据库错误
+
 components:
   schemas:
-    KV:
+    SensorData:
+      type: object
+      required:
+        - timestamp
+        - device_id
+        - metric_name
+        - value
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: 传感器数据时间戳（RFC3339格式）
+          example: "2024-01-01T10:00:00Z"
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+          maxLength: 100
+        metric_name:
+          type: string
+          description: 指标名称
+          example: "temperature"
+          maxLength: 50
+          enum:
+            - "temperature"
+            - "pressure"
+            - "humidity"
+            - "vibration"
+            - "voltage"
+            - "current"
+            - "power"
+            - "flow_rate"
+        value:
+          type: number
+          format: double
+          description: 传感器数值
+          example: 23.5
+        priority:
+          type: integer
+          description: 优先级（1:高 2:中 3:低）
+          example: 1
+          minimum: 1
+          maximum: 3
+          default: 2
+        data:
+          type: string
+          description: 随机负载数据，用于增大传输量进行压测
+          example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
+          maxLength: 65535
+
+    GetSensorDataRequest:
+      type: object
+      required:
+        - device_id
+        - start_time
+        - end_time
+      properties:
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+          maxLength: 100
+        metric_name:
+          type: string
+          description: 指标名称（可选，不指定则查询所有指标）
+          example: "temperature"
+          maxLength: 50
+          enum:
+            - "temperature"
+            - "pressure"
+            - "humidity"
+            - "vibration"
+            - "voltage"
+            - "current"
+            - "power"
+            - "flow_rate"
+        start_time:
+          type: string
+          format: date-time
+          description: 查询开始时间（RFC3339格式）
+          example: "2024-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: 查询结束时间（RFC3339格式）
+          example: "2024-01-01T23:59:59Z"
+        limit:
+          type: integer
+          description: 返回记录数限制（默认1000，最大10000）
+          example: 100
+          minimum: 1
+          maximum: 10000
+          default: 1000
+        offset:
+          type: integer
+          description: 分页偏移量（默认0）
+          example: 0
+          minimum: 0
+          default: 0
+
+    GetSensorDataResponse:
       type: object
       properties:
-        key:
+        status:
           type: string
-          description: Record key
+          description: 操作状态
+          example: "success"
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+        metric_name:
+          type: string
+          description: 指标名称（如果指定了特定指标）
+          example: "temperature"
+        start_time:
+          type: string
+          format: date-time
+          description: 查询开始时间
+          example: "2024-01-01T00:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          description: 查询结束时间
+          example: "2024-01-01T23:59:59Z"
+        total_count:
+          type: integer
+          format: int64
+          description: 符合条件的总记录数
+          example: 1500
+        limit:
+          type: integer
+          description: 返回记录数限制
+          example: 100
+        offset:
+          type: integer
+          description: 分页偏移量
+          example: 0
+        count:
+          type: integer
+          description: 实际返回的记录数
+          example: 100
+        data:
+          type: array
+          description: 传感器数据列表
+          items:
+            $ref: '#/components/schemas/SensorDataRecord'
+
+    SensorDataRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 记录ID
+          example: 12345
+        timestamp:
+          type: string
+          format: date-time
+          description: 传感器数据时间戳
+          example: "2024-01-01T10:00:00Z"
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+        metric_name:
+          type: string
+          description: 指标名称
+          example: "temperature"
         value:
+          type: number
+          format: double
+          description: 传感器数值
+          example: 23.5
+        priority:
+          type: integer
+          description: 优先级（1:高 2:中 3:低）
+          example: 2
+        data_preview:
           type: string
-          description: Record value
+          description: 负载数据预览（前100个字符）
+          example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
+        data_length:
+          type: integer
+          description: 完整负载数据长度
+          example: 1024
+        created_at:
+          type: string
+          format: date-time
+          description: 记录创建时间
+          example: "2024-01-01T10:00:00Z"
+
+    SensorReadWriteRequest:
+      type: object
       required:
-        - key
+        - device_id
+        - metric_name
+        - new_value
+        - timestamp
+      properties:
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+          maxLength: 100
+        metric_name:
+          type: string
+          description: 指标名称
+          example: "temperature"
+          maxLength: 50
+        new_value:
+          type: number
+          format: double
+          description: 新的传感器数值
+          example: 105.5
+        timestamp:
+          type: string
+          format: date-time
+          description: 时间戳（RFC3339格式）
+          example: "2024-01-01T10:00:00Z"
+        priority:
+          type: integer
+          description: 优先级（1:高 2:中 3:低）
+          example: 2
+          minimum: 1
+          maximum: 3
+          default: 2
+        data:
+          type: string
+          description: 随机负载数据，用于增大传输量进行压测
+          example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
+          maxLength: 65535
+
+    SensorReadWriteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 操作状态
+          example: "success"
+        device_id:
+          type: string
+          description: 设备唯一标识符
+          example: "factory_001_device_001"
+        metric_name:
+          type: string
+          description: 指标名称
+          example: "temperature"
+        previous_value:
+          type: number
+          format: double
+          description: 之前的数值
+          example: 25.5
+        new_value:
+          type: number
+          format: double
+          description: 新的数值
+          example: 105.5
+        priority:
+          type: integer
+          description: 优先级
+          example: 1
+        timestamp:
+          type: string
+          format: date-time
+          description: 时间戳
+          example: "2024-01-01T10:00:00Z"
+        alert:
+          type: string
+          description: 告警信息（可选）
+          example: "High value alert: 105.50 exceeds threshold"
+
+    BatchSensorReadWriteRequest:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          description: 批量传感器数据数组
+          items:
+            $ref: '#/components/schemas/SensorReadWriteRequest'
+          minItems: 1
+          maxItems: 1000
+
+    BatchSensorReadWriteResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 批量操作状态
+          example: "success"
+        total_processed:
+          type: integer
+          description: 总处理数量
+          example: 3
+        total_alerts:
+          type: integer
+          description: 总告警数量
+          example: 2
+        results:
+          type: array
+          description: 每个数据项的处理结果
+          items:
+            $ref: '#/components/schemas/SensorReadWriteResponse'
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 健康状态
+          example: "healthy"
+        time:
+          type: string
+          format: date-time
+          description: 当前时间
+          example: "2024-01-01T10:00:00Z"
+
+    SuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: 操作状态
+          example: "success"
+        message:
+          type: string
+          description: 操作信息
+          example: "Data inserted successfully"
+
+    StatsResponse:
+      type: object
+      properties:
+        total_records:
+          type: integer
+          format: int64
+          description: 总记录数
+          example: 1500000
+        priority_stats:
+          type: object
+          description: 按优先级统计
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            1: 50000
+            2: 1200000
+            3: 250000
+        recent_24h_count:
+          type: integer
+          format: int64
+          description: 最近24小时数据量
+          example: 86400
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: 错误信息
+        code:
+          type: integer
+          description: 错误代码
+        message:
+          type: string
+          description: 详细错误信息 

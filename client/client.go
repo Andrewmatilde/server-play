@@ -5,55 +5,261 @@ package client
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
-
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/oapi-codegen/runtime"
+	"time"
 )
 
-// KV defines model for KV.
-type KV struct {
-	// Key Record key
-	Key string `json:"key"`
+// Defines values for GetSensorDataRequestMetricName.
+const (
+	GetSensorDataRequestMetricNameCurrent     GetSensorDataRequestMetricName = "current"
+	GetSensorDataRequestMetricNameFlowRate    GetSensorDataRequestMetricName = "flow_rate"
+	GetSensorDataRequestMetricNameHumidity    GetSensorDataRequestMetricName = "humidity"
+	GetSensorDataRequestMetricNamePower       GetSensorDataRequestMetricName = "power"
+	GetSensorDataRequestMetricNamePressure    GetSensorDataRequestMetricName = "pressure"
+	GetSensorDataRequestMetricNameTemperature GetSensorDataRequestMetricName = "temperature"
+	GetSensorDataRequestMetricNameVibration   GetSensorDataRequestMetricName = "vibration"
+	GetSensorDataRequestMetricNameVoltage     GetSensorDataRequestMetricName = "voltage"
+)
 
-	// Value Record value
-	Value *string `json:"value,omitempty"`
+// Defines values for SensorDataMetricName.
+const (
+	SensorDataMetricNameCurrent     SensorDataMetricName = "current"
+	SensorDataMetricNameFlowRate    SensorDataMetricName = "flow_rate"
+	SensorDataMetricNameHumidity    SensorDataMetricName = "humidity"
+	SensorDataMetricNamePower       SensorDataMetricName = "power"
+	SensorDataMetricNamePressure    SensorDataMetricName = "pressure"
+	SensorDataMetricNameTemperature SensorDataMetricName = "temperature"
+	SensorDataMetricNameVibration   SensorDataMetricName = "vibration"
+	SensorDataMetricNameVoltage     SensorDataMetricName = "voltage"
+)
+
+// BatchSensorReadWriteRequest defines model for BatchSensorReadWriteRequest.
+type BatchSensorReadWriteRequest struct {
+	// Data 批量传感器数据数组
+	Data []SensorReadWriteRequest `json:"data"`
 }
 
-// ReadParams defines parameters for Read.
-type ReadParams struct {
-	Key string `form:"key" json:"key"`
+// BatchSensorReadWriteResponse defines model for BatchSensorReadWriteResponse.
+type BatchSensorReadWriteResponse struct {
+	// Results 每个数据项的处理结果
+	Results *[]SensorReadWriteResponse `json:"results,omitempty"`
+
+	// Status 批量操作状态
+	Status *string `json:"status,omitempty"`
+
+	// TotalAlerts 总告警数量
+	TotalAlerts *int `json:"total_alerts,omitempty"`
+
+	// TotalProcessed 总处理数量
+	TotalProcessed *int `json:"total_processed,omitempty"`
 }
 
-// RmwJSONBody defines parameters for Rmw.
-type RmwJSONBody struct {
-	// Key Record key to perform RMW
-	Key string `json:"key"`
+// GetSensorDataRequest defines model for GetSensorDataRequest.
+type GetSensorDataRequest struct {
+	// DeviceId 设备唯一标识符
+	DeviceId string `json:"device_id"`
+
+	// EndTime 查询结束时间（RFC3339格式）
+	EndTime time.Time `json:"end_time"`
+
+	// Limit 返回记录数限制（默认1000，最大10000）
+	Limit *int `json:"limit,omitempty"`
+
+	// MetricName 指标名称（可选，不指定则查询所有指标）
+	MetricName *GetSensorDataRequestMetricName `json:"metric_name,omitempty"`
+
+	// Offset 分页偏移量（默认0）
+	Offset *int `json:"offset,omitempty"`
+
+	// StartTime 查询开始时间（RFC3339格式）
+	StartTime time.Time `json:"start_time"`
 }
 
-// ScanParams defines parameters for Scan.
-type ScanParams struct {
-	Start int `form:"start" json:"start"`
-	Count int `form:"count" json:"count"`
+// GetSensorDataRequestMetricName 指标名称（可选，不指定则查询所有指标）
+type GetSensorDataRequestMetricName string
+
+// GetSensorDataResponse defines model for GetSensorDataResponse.
+type GetSensorDataResponse struct {
+	// Count 实际返回的记录数
+	Count *int `json:"count,omitempty"`
+
+	// Data 传感器数据列表
+	Data *[]SensorDataRecord `json:"data,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId *string `json:"device_id,omitempty"`
+
+	// EndTime 查询结束时间
+	EndTime *time.Time `json:"end_time,omitempty"`
+
+	// Limit 返回记录数限制
+	Limit *int `json:"limit,omitempty"`
+
+	// MetricName 指标名称（如果指定了特定指标）
+	MetricName *string `json:"metric_name,omitempty"`
+
+	// Offset 分页偏移量
+	Offset *int `json:"offset,omitempty"`
+
+	// StartTime 查询开始时间
+	StartTime *time.Time `json:"start_time,omitempty"`
+
+	// Status 操作状态
+	Status *string `json:"status,omitempty"`
+
+	// TotalCount 符合条件的总记录数
+	TotalCount *int64 `json:"total_count,omitempty"`
 }
 
-// InsertJSONRequestBody defines body for Insert for application/json ContentType.
-type InsertJSONRequestBody = KV
+// HealthResponse defines model for HealthResponse.
+type HealthResponse struct {
+	// Status 健康状态
+	Status *string `json:"status,omitempty"`
 
-// RmwJSONRequestBody defines body for Rmw for application/json ContentType.
-type RmwJSONRequestBody RmwJSONBody
+	// Time 当前时间
+	Time *time.Time `json:"time,omitempty"`
+}
 
-// UpdateJSONRequestBody defines body for Update for application/json ContentType.
-type UpdateJSONRequestBody = KV
+// SensorData defines model for SensorData.
+type SensorData struct {
+	// Data 随机负载数据，用于增大传输量进行压测
+	Data *string `json:"data,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId string `json:"device_id"`
+
+	// MetricName 指标名称
+	MetricName SensorDataMetricName `json:"metric_name"`
+
+	// Priority 优先级（1:高 2:中 3:低）
+	Priority *int `json:"priority,omitempty"`
+
+	// Timestamp 传感器数据时间戳（RFC3339格式）
+	Timestamp time.Time `json:"timestamp"`
+
+	// Value 传感器数值
+	Value float64 `json:"value"`
+}
+
+// SensorDataMetricName 指标名称
+type SensorDataMetricName string
+
+// SensorDataRecord defines model for SensorDataRecord.
+type SensorDataRecord struct {
+	// CreatedAt 记录创建时间
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// DataLength 完整负载数据长度
+	DataLength *int `json:"data_length,omitempty"`
+
+	// DataPreview 负载数据预览（前100个字符）
+	DataPreview *string `json:"data_preview,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId *string `json:"device_id,omitempty"`
+
+	// Id 记录ID
+	Id *int64 `json:"id,omitempty"`
+
+	// MetricName 指标名称
+	MetricName *string `json:"metric_name,omitempty"`
+
+	// Priority 优先级（1:高 2:中 3:低）
+	Priority *int `json:"priority,omitempty"`
+
+	// Timestamp 传感器数据时间戳
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+
+	// Value 传感器数值
+	Value *float64 `json:"value,omitempty"`
+}
+
+// SensorReadWriteRequest defines model for SensorReadWriteRequest.
+type SensorReadWriteRequest struct {
+	// Data 随机负载数据，用于增大传输量进行压测
+	Data *string `json:"data,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId string `json:"device_id"`
+
+	// MetricName 指标名称
+	MetricName string `json:"metric_name"`
+
+	// NewValue 新的传感器数值
+	NewValue float64 `json:"new_value"`
+
+	// Priority 优先级（1:高 2:中 3:低）
+	Priority *int `json:"priority,omitempty"`
+
+	// Timestamp 时间戳（RFC3339格式）
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// SensorReadWriteResponse defines model for SensorReadWriteResponse.
+type SensorReadWriteResponse struct {
+	// Alert 告警信息（可选）
+	Alert *string `json:"alert,omitempty"`
+
+	// DeviceId 设备唯一标识符
+	DeviceId *string `json:"device_id,omitempty"`
+
+	// MetricName 指标名称
+	MetricName *string `json:"metric_name,omitempty"`
+
+	// NewValue 新的数值
+	NewValue *float64 `json:"new_value,omitempty"`
+
+	// PreviousValue 之前的数值
+	PreviousValue *float64 `json:"previous_value,omitempty"`
+
+	// Priority 优先级
+	Priority *int `json:"priority,omitempty"`
+
+	// Status 操作状态
+	Status *string `json:"status,omitempty"`
+
+	// Timestamp 时间戳
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+}
+
+// StatsResponse defines model for StatsResponse.
+type StatsResponse struct {
+	// PriorityStats 按优先级统计
+	PriorityStats *map[string]int64 `json:"priority_stats,omitempty"`
+
+	// Recent24hCount 最近24小时数据量
+	Recent24hCount *int64 `json:"recent_24h_count,omitempty"`
+
+	// TotalRecords 总记录数
+	TotalRecords *int64 `json:"total_records,omitempty"`
+}
+
+// SuccessResponse defines model for SuccessResponse.
+type SuccessResponse struct {
+	// Message 操作信息
+	Message *string `json:"message,omitempty"`
+
+	// Status 操作状态
+	Status *string `json:"status,omitempty"`
+}
+
+// BatchSensorReadWriteJSONRequestBody defines body for BatchSensorReadWrite for application/json ContentType.
+type BatchSensorReadWriteJSONRequestBody = BatchSensorReadWriteRequest
+
+// GetSensorDataJSONRequestBody defines body for GetSensorData for application/json ContentType.
+type GetSensorDataJSONRequestBody = GetSensorDataRequest
+
+// UploadSensorDataJSONRequestBody defines body for UploadSensorData for application/json ContentType.
+type UploadSensorDataJSONRequestBody = SensorData
+
+// SensorReadWriteJSONRequestBody defines body for SensorReadWrite for application/json ContentType.
+type SensorReadWriteJSONRequestBody = SensorReadWriteRequest
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -128,30 +334,35 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// InsertWithBody request with any body
-	InsertWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// BatchSensorReadWriteWithBody request with any body
+	BatchSensorReadWriteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	Insert(ctx context.Context, body InsertJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	BatchSensorReadWrite(ctx context.Context, body BatchSensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Read request
-	Read(ctx context.Context, params *ReadParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetSensorDataWithBody request with any body
+	GetSensorDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RmwWithBody request with any body
-	RmwWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetSensorData(ctx context.Context, body GetSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	Rmw(ctx context.Context, body RmwJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// UploadSensorDataWithBody request with any body
+	UploadSensorDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// Scan request
-	Scan(ctx context.Context, params *ScanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	UploadSensorData(ctx context.Context, body UploadSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateWithBody request with any body
-	UpdateWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// SensorReadWriteWithBody request with any body
+	SensorReadWriteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	Update(ctx context.Context, body UpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	SensorReadWrite(ctx context.Context, body SensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStats request
+	GetStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// HealthCheck request
+	HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) InsertWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewInsertRequestWithBody(c.Server, contentType, body)
+func (c *Client) BatchSensorReadWriteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchSensorReadWriteRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +373,8 @@ func (c *Client) InsertWithBody(ctx context.Context, contentType string, body io
 	return c.Client.Do(req)
 }
 
-func (c *Client) Insert(ctx context.Context, body InsertJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewInsertRequest(c.Server, body)
+func (c *Client) BatchSensorReadWrite(ctx context.Context, body BatchSensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchSensorReadWriteRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -174,8 +385,8 @@ func (c *Client) Insert(ctx context.Context, body InsertJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
-func (c *Client) Read(ctx context.Context, params *ReadParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewReadRequest(c.Server, params)
+func (c *Client) GetSensorDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSensorDataRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -186,8 +397,8 @@ func (c *Client) Read(ctx context.Context, params *ReadParams, reqEditors ...Req
 	return c.Client.Do(req)
 }
 
-func (c *Client) RmwWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRmwRequestWithBody(c.Server, contentType, body)
+func (c *Client) GetSensorData(ctx context.Context, body GetSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSensorDataRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +409,8 @@ func (c *Client) RmwWithBody(ctx context.Context, contentType string, body io.Re
 	return c.Client.Do(req)
 }
 
-func (c *Client) Rmw(ctx context.Context, body RmwJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRmwRequest(c.Server, body)
+func (c *Client) UploadSensorDataWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadSensorDataRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -210,8 +421,8 @@ func (c *Client) Rmw(ctx context.Context, body RmwJSONRequestBody, reqEditors ..
 	return c.Client.Do(req)
 }
 
-func (c *Client) Scan(ctx context.Context, params *ScanParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewScanRequest(c.Server, params)
+func (c *Client) UploadSensorData(ctx context.Context, body UploadSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUploadSensorDataRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -222,8 +433,8 @@ func (c *Client) Scan(ctx context.Context, params *ScanParams, reqEditors ...Req
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateRequestWithBody(c.Server, contentType, body)
+func (c *Client) SensorReadWriteWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSensorReadWriteRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -234,8 +445,8 @@ func (c *Client) UpdateWithBody(ctx context.Context, contentType string, body io
 	return c.Client.Do(req)
 }
 
-func (c *Client) Update(ctx context.Context, body UpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateRequest(c.Server, body)
+func (c *Client) SensorReadWrite(ctx context.Context, body SensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSensorReadWriteRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -246,19 +457,43 @@ func (c *Client) Update(ctx context.Context, body UpdateJSONRequestBody, reqEdit
 	return c.Client.Do(req)
 }
 
-// NewInsertRequest calls the generic Insert builder with application/json body
-func NewInsertRequest(server string, body InsertJSONRequestBody) (*http.Request, error) {
+func (c *Client) GetStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStatsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) HealthCheck(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewHealthCheckRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewBatchSensorReadWriteRequest calls the generic BatchSensorReadWrite builder with application/json body
+func NewBatchSensorReadWriteRequest(server string, body BatchSensorReadWriteJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewInsertRequestWithBody(server, "application/json", bodyReader)
+	return NewBatchSensorReadWriteRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewInsertRequestWithBody generates requests for Insert with any type of body
-func NewInsertRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewBatchSensorReadWriteRequestWithBody generates requests for BatchSensorReadWrite with any type of body
+func NewBatchSensorReadWriteRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -266,7 +501,7 @@ func NewInsertRequestWithBody(server string, contentType string, body io.Reader)
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/insert")
+	operationPath := fmt.Sprintf("/api/batch-sensor-rw")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -286,8 +521,19 @@ func NewInsertRequestWithBody(server string, contentType string, body io.Reader)
 	return req, nil
 }
 
-// NewReadRequest generates requests for Read
-func NewReadRequest(server string, params *ReadParams) (*http.Request, error) {
+// NewGetSensorDataRequest calls the generic GetSensorData builder with application/json body
+func NewGetSensorDataRequest(server string, body GetSensorDataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewGetSensorDataRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewGetSensorDataRequestWithBody generates requests for GetSensorData with any type of body
+func NewGetSensorDataRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -295,7 +541,7 @@ func NewReadRequest(server string, params *ReadParams) (*http.Request, error) {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/read")
+	operationPath := fmt.Sprintf("/api/get-sensor-data")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -305,22 +551,113 @@ func NewReadRequest(server string, params *ReadParams) (*http.Request, error) {
 		return nil, err
 	}
 
-	if params != nil {
-		queryValues := queryURL.Query()
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "key", runtime.ParamLocationQuery, params.Key); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
+	req.Header.Add("Content-Type", contentType)
 
-		queryURL.RawQuery = queryValues.Encode()
+	return req, nil
+}
+
+// NewUploadSensorDataRequest calls the generic UploadSensorData builder with application/json body
+func NewUploadSensorDataRequest(server string, body UploadSensorDataJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUploadSensorDataRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUploadSensorDataRequestWithBody generates requests for UploadSensorData with any type of body
+func NewUploadSensorDataRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sensor-data")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSensorReadWriteRequest calls the generic SensorReadWrite builder with application/json body
+func NewSensorReadWriteRequest(server string, body SensorReadWriteJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSensorReadWriteRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewSensorReadWriteRequestWithBody generates requests for SensorReadWrite with any type of body
+func NewSensorReadWriteRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/sensor-rw")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetStatsRequest generates requests for GetStats
+func NewGetStatsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/stats")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -331,19 +668,8 @@ func NewReadRequest(server string, params *ReadParams) (*http.Request, error) {
 	return req, nil
 }
 
-// NewRmwRequest calls the generic Rmw builder with application/json body
-func NewRmwRequest(server string, body RmwJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewRmwRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewRmwRequestWithBody generates requests for Rmw with any type of body
-func NewRmwRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewHealthCheckRequest generates requests for HealthCheck
+func NewHealthCheckRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -351,7 +677,7 @@ func NewRmwRequestWithBody(server string, contentType string, body io.Reader) (*
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/rmw")
+	operationPath := fmt.Sprintf("/health")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -359,111 +685,12 @@ func NewRmwRequestWithBody(server string, contentType string, body io.Reader) (*
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewScanRequest generates requests for Scan
-func NewScanRequest(server string, params *ScanParams) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/scan")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "start", runtime.ParamLocationQuery, params.Start); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "count", runtime.ParamLocationQuery, params.Count); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
-				}
-			}
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	return req, nil
-}
-
-// NewUpdateRequest calls the generic Update builder with application/json body
-func NewUpdateRequest(server string, body UpdateJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpdateRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewUpdateRequestWithBody generates requests for Update with any type of body
-func NewUpdateRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/update")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -511,35 +738,41 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// InsertWithBodyWithResponse request with any body
-	InsertWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InsertResponse, error)
+	// BatchSensorReadWriteWithBodyWithResponse request with any body
+	BatchSensorReadWriteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchSensorReadWriteResponse, error)
 
-	InsertWithResponse(ctx context.Context, body InsertJSONRequestBody, reqEditors ...RequestEditorFn) (*InsertResponse, error)
+	BatchSensorReadWriteWithResponse(ctx context.Context, body BatchSensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchSensorReadWriteResponse, error)
 
-	// ReadWithResponse request
-	ReadWithResponse(ctx context.Context, params *ReadParams, reqEditors ...RequestEditorFn) (*ReadResponse, error)
+	// GetSensorDataWithBodyWithResponse request with any body
+	GetSensorDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetSensorDataResponse, error)
 
-	// RmwWithBodyWithResponse request with any body
-	RmwWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RmwResponse, error)
+	GetSensorDataWithResponse(ctx context.Context, body GetSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*GetSensorDataResponse, error)
 
-	RmwWithResponse(ctx context.Context, body RmwJSONRequestBody, reqEditors ...RequestEditorFn) (*RmwResponse, error)
+	// UploadSensorDataWithBodyWithResponse request with any body
+	UploadSensorDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadSensorDataResponse, error)
 
-	// ScanWithResponse request
-	ScanWithResponse(ctx context.Context, params *ScanParams, reqEditors ...RequestEditorFn) (*ScanResponse, error)
+	UploadSensorDataWithResponse(ctx context.Context, body UploadSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*UploadSensorDataResponse, error)
 
-	// UpdateWithBodyWithResponse request with any body
-	UpdateWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateResponse, error)
+	// SensorReadWriteWithBodyWithResponse request with any body
+	SensorReadWriteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SensorReadWriteResponse, error)
 
-	UpdateWithResponse(ctx context.Context, body UpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateResponse, error)
+	SensorReadWriteWithResponse(ctx context.Context, body SensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*SensorReadWriteResponse, error)
+
+	// GetStatsWithResponse request
+	GetStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStatsResponse, error)
+
+	// HealthCheckWithResponse request
+	HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error)
 }
 
-type InsertResponse struct {
+type BatchSensorReadWriteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *BatchSensorReadWriteResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r InsertResponse) Status() string {
+func (r BatchSensorReadWriteResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -547,21 +780,21 @@ func (r InsertResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r InsertResponse) StatusCode() int {
+func (r BatchSensorReadWriteResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type ReadResponse struct {
+type GetSensorDataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *KV
+	JSON200      *GetSensorDataResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r ReadResponse) Status() string {
+func (r GetSensorDataResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -569,20 +802,21 @@ func (r ReadResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ReadResponse) StatusCode() int {
+func (r GetSensorDataResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type RmwResponse struct {
+type UploadSensorDataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *SuccessResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r RmwResponse) Status() string {
+func (r UploadSensorDataResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -590,21 +824,21 @@ func (r RmwResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r RmwResponse) StatusCode() int {
+func (r UploadSensorDataResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type ScanResponse struct {
+type SensorReadWriteResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]KV
+	JSON200      *SensorReadWriteResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r ScanResponse) Status() string {
+func (r SensorReadWriteResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -612,20 +846,21 @@ func (r ScanResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ScanResponse) StatusCode() int {
+func (r SensorReadWriteResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type UpdateResponse struct {
+type GetStatsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *StatsResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r UpdateResponse) Status() string {
+func (r GetStatsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -633,114 +868,137 @@ func (r UpdateResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UpdateResponse) StatusCode() int {
+func (r GetStatsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-// InsertWithBodyWithResponse request with arbitrary body returning *InsertResponse
-func (c *ClientWithResponses) InsertWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*InsertResponse, error) {
-	rsp, err := c.InsertWithBody(ctx, contentType, body, reqEditors...)
+type HealthCheckResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *HealthResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r HealthCheckResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r HealthCheckResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// BatchSensorReadWriteWithBodyWithResponse request with arbitrary body returning *BatchSensorReadWriteResponse
+func (c *ClientWithResponses) BatchSensorReadWriteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchSensorReadWriteResponse, error) {
+	rsp, err := c.BatchSensorReadWriteWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseInsertResponse(rsp)
+	return ParseBatchSensorReadWriteResponse(rsp)
 }
 
-func (c *ClientWithResponses) InsertWithResponse(ctx context.Context, body InsertJSONRequestBody, reqEditors ...RequestEditorFn) (*InsertResponse, error) {
-	rsp, err := c.Insert(ctx, body, reqEditors...)
+func (c *ClientWithResponses) BatchSensorReadWriteWithResponse(ctx context.Context, body BatchSensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchSensorReadWriteResponse, error) {
+	rsp, err := c.BatchSensorReadWrite(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseInsertResponse(rsp)
+	return ParseBatchSensorReadWriteResponse(rsp)
 }
 
-// ReadWithResponse request returning *ReadResponse
-func (c *ClientWithResponses) ReadWithResponse(ctx context.Context, params *ReadParams, reqEditors ...RequestEditorFn) (*ReadResponse, error) {
-	rsp, err := c.Read(ctx, params, reqEditors...)
+// GetSensorDataWithBodyWithResponse request with arbitrary body returning *GetSensorDataResponse
+func (c *ClientWithResponses) GetSensorDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*GetSensorDataResponse, error) {
+	rsp, err := c.GetSensorDataWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseReadResponse(rsp)
+	return ParseGetSensorDataResponse(rsp)
 }
 
-// RmwWithBodyWithResponse request with arbitrary body returning *RmwResponse
-func (c *ClientWithResponses) RmwWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RmwResponse, error) {
-	rsp, err := c.RmwWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) GetSensorDataWithResponse(ctx context.Context, body GetSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*GetSensorDataResponse, error) {
+	rsp, err := c.GetSensorData(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRmwResponse(rsp)
+	return ParseGetSensorDataResponse(rsp)
 }
 
-func (c *ClientWithResponses) RmwWithResponse(ctx context.Context, body RmwJSONRequestBody, reqEditors ...RequestEditorFn) (*RmwResponse, error) {
-	rsp, err := c.Rmw(ctx, body, reqEditors...)
+// UploadSensorDataWithBodyWithResponse request with arbitrary body returning *UploadSensorDataResponse
+func (c *ClientWithResponses) UploadSensorDataWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UploadSensorDataResponse, error) {
+	rsp, err := c.UploadSensorDataWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRmwResponse(rsp)
+	return ParseUploadSensorDataResponse(rsp)
 }
 
-// ScanWithResponse request returning *ScanResponse
-func (c *ClientWithResponses) ScanWithResponse(ctx context.Context, params *ScanParams, reqEditors ...RequestEditorFn) (*ScanResponse, error) {
-	rsp, err := c.Scan(ctx, params, reqEditors...)
+func (c *ClientWithResponses) UploadSensorDataWithResponse(ctx context.Context, body UploadSensorDataJSONRequestBody, reqEditors ...RequestEditorFn) (*UploadSensorDataResponse, error) {
+	rsp, err := c.UploadSensorData(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseScanResponse(rsp)
+	return ParseUploadSensorDataResponse(rsp)
 }
 
-// UpdateWithBodyWithResponse request with arbitrary body returning *UpdateResponse
-func (c *ClientWithResponses) UpdateWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateResponse, error) {
-	rsp, err := c.UpdateWithBody(ctx, contentType, body, reqEditors...)
+// SensorReadWriteWithBodyWithResponse request with arbitrary body returning *SensorReadWriteResponse
+func (c *ClientWithResponses) SensorReadWriteWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SensorReadWriteResponse, error) {
+	rsp, err := c.SensorReadWriteWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpdateResponse(rsp)
+	return ParseSensorReadWriteResponse(rsp)
 }
 
-func (c *ClientWithResponses) UpdateWithResponse(ctx context.Context, body UpdateJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateResponse, error) {
-	rsp, err := c.Update(ctx, body, reqEditors...)
+func (c *ClientWithResponses) SensorReadWriteWithResponse(ctx context.Context, body SensorReadWriteJSONRequestBody, reqEditors ...RequestEditorFn) (*SensorReadWriteResponse, error) {
+	rsp, err := c.SensorReadWrite(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpdateResponse(rsp)
+	return ParseSensorReadWriteResponse(rsp)
 }
 
-// ParseInsertResponse parses an HTTP response from a InsertWithResponse call
-func ParseInsertResponse(rsp *http.Response) (*InsertResponse, error) {
+// GetStatsWithResponse request returning *GetStatsResponse
+func (c *ClientWithResponses) GetStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStatsResponse, error) {
+	rsp, err := c.GetStats(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStatsResponse(rsp)
+}
+
+// HealthCheckWithResponse request returning *HealthCheckResponse
+func (c *ClientWithResponses) HealthCheckWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthCheckResponse, error) {
+	rsp, err := c.HealthCheck(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseHealthCheckResponse(rsp)
+}
+
+// ParseBatchSensorReadWriteResponse parses an HTTP response from a BatchSensorReadWriteWithResponse call
+func ParseBatchSensorReadWriteResponse(rsp *http.Response) (*BatchSensorReadWriteResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &InsertResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseReadResponse parses an HTTP response from a ReadWithResponse call
-func ParseReadResponse(rsp *http.Response) (*ReadResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ReadResponse{
+	response := &BatchSensorReadWriteResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest KV
+		var dest BatchSensorReadWriteResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -751,38 +1009,22 @@ func ParseReadResponse(rsp *http.Response) (*ReadResponse, error) {
 	return response, nil
 }
 
-// ParseRmwResponse parses an HTTP response from a RmwWithResponse call
-func ParseRmwResponse(rsp *http.Response) (*RmwResponse, error) {
+// ParseGetSensorDataResponse parses an HTTP response from a GetSensorDataWithResponse call
+func ParseGetSensorDataResponse(rsp *http.Response) (*GetSensorDataResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &RmwResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseScanResponse parses an HTTP response from a ScanWithResponse call
-func ParseScanResponse(rsp *http.Response) (*ScanResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ScanResponse{
+	response := &GetSensorDataResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []KV
+		var dest GetSensorDataResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -793,107 +1035,106 @@ func ParseScanResponse(rsp *http.Response) (*ScanResponse, error) {
 	return response, nil
 }
 
-// ParseUpdateResponse parses an HTTP response from a UpdateWithResponse call
-func ParseUpdateResponse(rsp *http.Response) (*UpdateResponse, error) {
+// ParseUploadSensorDataResponse parses an HTTP response from a UploadSensorDataWithResponse call
+func ParseUploadSensorDataResponse(rsp *http.Response) (*UploadSensorDataResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UpdateResponse{
+	response := &UploadSensorDataResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SuccessResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	}
 
 	return response, nil
 }
 
-// Base64 encoded, gzipped, json marshaled Swagger object
-var swaggerSpec = []string{
-
-	"H4sIAAAAAAAC/+RVTW8bOQz9KwR3j7ZndpMFgrklWRQ10rSBnSYoghxkDcdWMiMplMbpIPB/LyS5dlLb",
-	"RT56KNCLPRApkXyPj3xAaRprNGnvsHhAJ2fUiPh5chF+LRtL7BXFs1vqwl9JTrKyXhmNBY5IGi4h2Hro",
-	"O0tYoPOs9BQXPZyLuqWdl5J149qih0x3rWIqsbiKYa9XTmZyQ9LjIngpXZnNxz9Z0odnQ3CWpKqUFOEc",
-	"KsPgZwRfjsdH8P78/AzGxHNiUI2tqSHtlZ6CNLx0CYXHmw4O++8GIUvl65DBxguHZ0Ps4ZzYpQT+GeSD",
-	"PFRvLGlhFRa4N8gHe9hDK/wsYpkp7Yh9BNm4+L+KOCyxwGGyJyjI+SNTRvSl0Z50vCCsrZflZTcuhP5O",
-	"Yfj6m6nCAv/K1hxnS4Kzk4sE4Bpmzy3FA2eNdonvf/P9TXQ/GjheprDo4X6eb7ociRJGKevg8982n/+F",
-	"FxPhCIjZcOTctU0juFvVDgI03QPHXokeGZMow1tT2oLYKBgDxCwa8sQOi6sHVCHaXUsc+lOLJjCYmvVp",
-	"8b1H0P3Yj9cbwOS/nIqn8IxbKcm5qq0h1rwL6lPlXOjbW+rAMExECbxGfn8bgUvtaeOhMq0uX0dRABvE",
-	"khyYdHEAJI6a+91dPWru39DSLxpH4A1Y4spwA6PTyzeMmd9UJYGC/qkpVdX1L1l5Ws+sxISTQu9UyzgY",
-	"n6UW58VqEP1UL0p7mlJMc/tL0rT6hS+9VXrKU+Oeo8EV84JZdNs0+UE5D6YKvdWPmwusUOx2EjzUc1Gr",
-	"Eh5B/CqeA1NBakJPKcRPmnOJ49aWwtNuwX1O9j9yjaTaQWigr8rF/b5aJsExbu/U9y3XWODMe1tkWW2k",
-	"qGfG+eIgP8hxcb34FgAA//93zYY+KQkAAA==",
-}
-
-// GetSwagger returns the content of the embedded swagger specification file
-// or error if failed to decode
-func decodeSpec() ([]byte, error) {
-	zipped, err := base64.StdEncoding.DecodeString(strings.Join(swaggerSpec, ""))
+// ParseSensorReadWriteResponse parses an HTTP response from a SensorReadWriteWithResponse call
+func ParseSensorReadWriteResponse(rsp *http.Response) (*SensorReadWriteResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
-		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(zipped))
-	if err != nil {
-		return nil, fmt.Errorf("error decompressing spec: %w", err)
-	}
-	var buf bytes.Buffer
-	_, err = buf.ReadFrom(zr)
-	if err != nil {
-		return nil, fmt.Errorf("error decompressing spec: %w", err)
+		return nil, err
 	}
 
-	return buf.Bytes(), nil
-}
-
-var rawSpec = decodeSpecCached()
-
-// a naive cached of a decoded swagger spec
-func decodeSpecCached() func() ([]byte, error) {
-	data, err := decodeSpec()
-	return func() ([]byte, error) {
-		return data, err
-	}
-}
-
-// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
-func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
-	res := make(map[string]func() ([]byte, error))
-	if len(pathToFile) > 0 {
-		res[pathToFile] = rawSpec
+	response := &SensorReadWriteResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
-	return res
-}
-
-// GetSwagger returns the Swagger specification corresponding to the generated code
-// in this file. The external references of Swagger specification are resolved.
-// The logic of resolving external references is tightly connected to "import-mapping" feature.
-// Externally referenced files must be embedded in the corresponding golang packages.
-// Urls can be supported but this task was out of the scope.
-func GetSwagger() (swagger *openapi3.T, err error) {
-	resolvePath := PathToRawSpec("")
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = true
-	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
-		pathToFile := url.String()
-		pathToFile = path.Clean(pathToFile)
-		getSpec, ok := resolvePath[pathToFile]
-		if !ok {
-			err1 := fmt.Errorf("path not found: %s", pathToFile)
-			return nil, err1
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SensorReadWriteResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
 		}
-		return getSpec()
+		response.JSON200 = &dest
+
 	}
-	var specData []byte
-	specData, err = rawSpec()
+
+	return response, nil
+}
+
+// ParseGetStatsResponse parses an HTTP response from a GetStatsWithResponse call
+func ParseGetStatsResponse(rsp *http.Response) (*GetStatsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
-		return
+		return nil, err
 	}
-	swagger, err = loader.LoadFromData(specData)
+
+	response := &GetStatsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StatsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseHealthCheckResponse parses an HTTP response from a HealthCheckWithResponse call
+func ParseHealthCheckResponse(rsp *http.Response) (*HealthCheckResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
-		return
+		return nil, err
 	}
-	return
+
+	response := &HealthCheckResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest HealthResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
 }

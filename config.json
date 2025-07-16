@@ -9,7 +9,5 @@
   "batch_rw_ratio": 0.1,
   "query_ratio": 0.05,
   "key_range": 1000,
-  "data_size_min": 16,
-  "data_size_max": 64,
   "report_interval": 1
 }

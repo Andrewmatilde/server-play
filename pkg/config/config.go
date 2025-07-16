@@ -41,8 +41,6 @@ type Config struct {
 
 	// 数据配置
 	KeyRange       int `json:"key_range"`        // 设备ID范围
-	DataSizeMin    int `json:"data_size_min"`    // 最小数据大小（字节）
-	DataSizeMax    int `json:"data_size_max"`    // 最大数据大小（字节）
 	ReportInterval int `json:"report_interval"`  // 报告间隔（秒）
 
 	// 内部计算字段
@@ -63,8 +61,6 @@ func New() *Config {
 		BatchRWRatio:    0.05,
 		QueryRatio:      0.05,
 		KeyRange:        1000,
-		DataSizeMin:     512,
-		DataSizeMax:     2048,
 		ReportInterval:  1,
 	}
 	c.calculateDerivedFields()
@@ -130,10 +126,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("所有操作比例必须大于等于0")
 	}
 
-	// 验证数据大小
-	if c.DataSizeMin <= 0 || c.DataSizeMax <= 0 || c.DataSizeMin > c.DataSizeMax {
-		return fmt.Errorf("数据大小配置无效: min=%d, max=%d", c.DataSizeMin, c.DataSizeMax)
-	}
 
 	// 验证键值范围
 	if c.KeyRange <= 0 {
@@ -160,7 +152,7 @@ func (c *Config) Print() {
 	fmt.Printf("  查询操作: %.2f\n", c.QueryRatio)
 	fmt.Printf("  总比例: %.2f\n", c.totalRatio)
 	fmt.Printf("设备ID范围: %d\n", c.KeyRange)
-	fmt.Printf("数据大小范围: %d - %d 字节\n", c.DataSizeMin, c.DataSizeMax)
+	fmt.Printf("数据大小: 64 字节（固定）\n")
 	fmt.Printf("报告间隔: %d 秒\n", c.ReportInterval)
 	fmt.Printf("================\n")
 }

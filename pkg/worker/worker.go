@@ -229,17 +229,18 @@ func (w *Worker) generatePriority() int {
 	return 2 // 默认中优先级
 }
 
-// generateRandomData 生成随机负载数据
+// generateRandomData 生成固定64字节的负载数据
 func (w *Worker) generateRandomData() string {
-	// 根据配置生成指定大小范围的随机数据
-	size := rand.Intn(w.config.DataSizeMax-w.config.DataSizeMin+1) + w.config.DataSizeMin
-
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, size)
+	// 生成固定64字节的数据
+	const (
+		charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		dataSize = 64 // 固定数据大小
+	)
+	b := make([]byte, dataSize)
 	charId := rand.Intn(len(charset))
 	for i := range b {
 		b[i] = charset[charId]
-		charId = (charId + 3) >> 4 % len(charset)
+		charId = ((charId + 3) / 7 >> 2) % len(charset)
 	}
 	return string(b)
 }

@@ -466,9 +466,10 @@ components:
           default: 2
         data:
           type: string
-          description: 随机负载数据，用于增大传输量进行压测
-          example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
-          maxLength: 65535
+          description: 固定64字节的负载数据，用于标准化传输测试
+          example: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+          minLength: 64
+          maxLength: 64
 
     GetSensorDataRequest:
       type: object
@@ -649,9 +650,10 @@ components:
           default: 2
         data:
           type: string
-          description: 随机负载数据，用于增大传输量进行压测
-          example: "eyJsb2FkIjpbMSwyLDMsNF0sInRpbWVzdGFtcCI6IjIwMjQtMDEtMDFUMTA6MDA6MDBaIiwic2l6ZSI6MTAyNCwicmFuZG9tIjoiYWJjZGVmZ2hpams="
-          maxLength: 65535
+          description: 固定64字节的负载数据，用于标准化传输测试
+          example: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
+          minLength: 64
+          maxLength: 64
 
     SensorReadWriteData:
       type: object

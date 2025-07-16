@@ -216,7 +216,7 @@ type Result struct {
 	Latency   time.Duration
 	Priority  int
 	Success   bool
-	Timestamp time.Time
+	IsSent    bool // true表示请求开始发送，false表示请求完成
 }
 
 // Collector 统计收集器
@@ -268,7 +268,7 @@ func NewCollector(ctx context.Context) *Collector {
 		queryStats:      NewLatencyStats(),
 		startTime:       now,
 		lastPrintTime:   now,
-		resultChan:      make(chan Result, 10000), // 缓冲通道
+		resultChan:      make(chan Result, 1000000), // 缓冲通道
 	}
 
 	// 启动统计处理协程
@@ -285,7 +285,39 @@ func (sc *Collector) PushResult(operation string, latency time.Duration, priorit
 		Latency:   latency,
 		Priority:  priority,
 		Success:   success,
-		Timestamp: time.Now(),
+		IsSent:    false, // 兼容性方法，默认为完成事件
+	}:
+	default:
+		// 如果通道满了，丢弃该统计结果
+		// 这样可以避免阻塞 Worker
+	}
+}
+
+// PushSentEvent 推送请求发送事件（立即记录发送统计）
+func (sc *Collector) PushSentEvent(operation string) {
+	select {
+	case sc.resultChan <- Result{
+		Operation: operation,
+		Latency:   0,
+		Priority:  0,
+		Success:   true,
+		IsSent:    true,
+	}:
+	default:
+		// 如果通道满了，丢弃该统计结果
+		// 这样可以避免阻塞 Worker
+	}
+}
+
+// PushCompletedResult 推送请求完成结果
+func (sc *Collector) PushCompletedResult(operation string, latency time.Duration, priority int, success bool) {
+	select {
+	case sc.resultChan <- Result{
+		Operation: operation,
+		Latency:   latency,
+		Priority:  priority,
+		Success:   success,
+		IsSent:    false,
 	}:
 	default:
 		// 如果通道满了，丢弃该统计结果
@@ -314,38 +346,49 @@ func (sc *Collector) processResults(ctx context.Context) {
 }
 
 func (sc *Collector) processResult(result Result) {
-	switch result.Operation {
-	case "sensor-data":
-		atomic.AddInt64(&sc.sensorDataSent, 1)
-		if result.Success {
-			atomic.AddInt64(&sc.sensorDataOps, 1)
-			sc.sensorDataStats.Record(result.Latency, result.Priority)
-		} else {
-			atomic.AddInt64(&sc.sensorDataErrors, 1)
+	if result.IsSent {
+		// 处理发送事件，只记录发送计数
+		switch result.Operation {
+		case "sensor-data":
+			atomic.AddInt64(&sc.sensorDataSent, 1)
+		case "sensor-rw":
+			atomic.AddInt64(&sc.sensorRWSent, 1)
+		case "batch-rw":
+			atomic.AddInt64(&sc.batchRWSent, 1)
+		case "query":
+			atomic.AddInt64(&sc.querySent, 1)
 		}
-	case "sensor-rw":
-		atomic.AddInt64(&sc.sensorRWSent, 1)
-		if result.Success {
-			atomic.AddInt64(&sc.sensorRWOps, 1)
-			sc.sensorRWStats.Record(result.Latency, result.Priority)
-		} else {
-			atomic.AddInt64(&sc.sensorRWErrors, 1)
-		}
-	case "batch-rw":
-		atomic.AddInt64(&sc.batchRWSent, 1)
-		if result.Success {
-			atomic.AddInt64(&sc.batchRWOps, 1)
-			sc.batchRWStats.Record(result.Latency, result.Priority)
-		} else {
-			atomic.AddInt64(&sc.batchRWErrors, 1)
-		}
-	case "query":
-		atomic.AddInt64(&sc.querySent, 1)
-		if result.Success {
-			atomic.AddInt64(&sc.queryOps, 1)
-			sc.queryStats.Record(result.Latency, result.Priority)
-		} else {
-			atomic.AddInt64(&sc.queryErrors, 1)
+	} else {
+		// 处理完成事件，记录完成计数、错误和延迟统计
+		switch result.Operation {
+		case "sensor-data":
+			if result.Success {
+				atomic.AddInt64(&sc.sensorDataOps, 1)
+				sc.sensorDataStats.Record(result.Latency, result.Priority)
+			} else {
+				atomic.AddInt64(&sc.sensorDataErrors, 1)
+			}
+		case "sensor-rw":
+			if result.Success {
+				atomic.AddInt64(&sc.sensorRWOps, 1)
+				sc.sensorRWStats.Record(result.Latency, result.Priority)
+			} else {
+				atomic.AddInt64(&sc.sensorRWErrors, 1)
+			}
+		case "batch-rw":
+			if result.Success {
+				atomic.AddInt64(&sc.batchRWOps, 1)
+				sc.batchRWStats.Record(result.Latency, result.Priority)
+			} else {
+				atomic.AddInt64(&sc.batchRWErrors, 1)
+			}
+		case "query":
+			if result.Success {
+				atomic.AddInt64(&sc.queryOps, 1)
+				sc.queryStats.Record(result.Latency, result.Priority)
+			} else {
+				atomic.AddInt64(&sc.queryErrors, 1)
+			}
 		}
 	}
 }

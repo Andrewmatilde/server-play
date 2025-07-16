@@ -70,6 +70,9 @@ func (w *Worker) doSensorDataUpload() {
 	priority := w.generatePriority()
 	data := w.generateRandomData()
 
+	// 立即记录发送事件
+	w.statsCollector.PushSentEvent("sensor-data")
+
 	startTime := time.Now()
 	resp, err := w.client.UploadSensorDataWithResponse(context.Background(), client.UploadSensorDataJSONRequestBody{
 		DeviceId:   deviceID,
@@ -82,7 +85,8 @@ func (w *Worker) doSensorDataUpload() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("sensor-data", latency, priority, success)
+	// 记录完成事件
+	w.statsCollector.PushCompletedResult("sensor-data", latency, priority, success)
 }
 
 // doSensorReadWrite 传感器读写操作
@@ -92,6 +96,9 @@ func (w *Worker) doSensorReadWrite() {
 	value := w.generateValue()
 	priority := w.generatePriority()
 	data := w.generateRandomData()
+
+	// 立即记录发送事件
+	w.statsCollector.PushSentEvent("sensor-rw")
 
 	startTime := time.Now()
 	resp, err := w.client.SensorReadWriteWithResponse(context.Background(), client.SensorReadWriteJSONRequestBody{
@@ -105,7 +112,8 @@ func (w *Worker) doSensorReadWrite() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("sensor-rw", latency, priority, success)
+	// 记录完成事件
+	w.statsCollector.PushCompletedResult("sensor-rw", latency, priority, success)
 }
 
 // doBatchSensorRW 批量传感器读写操作
@@ -130,6 +138,9 @@ func (w *Worker) doBatchSensorRW() {
 		}
 	}
 
+	// 立即记录发送事件
+	w.statsCollector.PushSentEvent("batch-rw")
+
 	startTime := time.Now()
 	resp, err := w.client.BatchSensorReadWriteWithResponse(context.Background(), client.BatchSensorReadWriteJSONRequestBody{
 		Data: data,
@@ -137,7 +148,8 @@ func (w *Worker) doBatchSensorRW() {
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("batch-rw", latency, 0, success)
+	// 记录完成事件
+	w.statsCollector.PushCompletedResult("batch-rw", latency, 0, success)
 }
 
 // doSensorQuery 传感器数据查询
@@ -160,12 +172,16 @@ func (w *Worker) doSensorQuery() {
 		request.MetricName = &metricName
 	}
 
+	// 立即记录发送事件
+	w.statsCollector.PushSentEvent("query")
+
 	reqStartTime := time.Now()
 	resp, err := w.client.GetSensorDataWithResponse(context.Background(), request)
 	latency := time.Since(reqStartTime)
 
 	success := err == nil && resp.StatusCode() == 200
-	w.statsCollector.PushResult("query", latency, 0, success)
+	// 记录完成事件
+	w.statsCollector.PushCompletedResult("query", latency, 0, success)
 }
 
 // generateDeviceID 生成设备ID

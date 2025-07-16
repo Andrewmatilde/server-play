@@ -25,7 +25,52 @@ import (
 	"splay/client"
 	"splay/pkg/config"
 	"splay/pkg/stats"
+	"sync"
 	"time"
+)
+
+// 常量定义
+const (
+	charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	dataSize = 64 // 固定数据大小
+)
+
+// 对象池
+var (
+	// 字节切片池
+	byteSlicePool = sync.Pool{
+		New: func() any {
+			return make([]byte, dataSize)
+		},
+	}
+
+	// 传感器数据上报请求池
+	sensorDataRequestPool = sync.Pool{
+		New: func() any {
+			return &client.UploadSensorDataJSONRequestBody{}
+		},
+	}
+
+	// 传感器读写请求池
+	sensorRWRequestPool = sync.Pool{
+		New: func() any {
+			return &client.SensorReadWriteJSONRequestBody{}
+		},
+	}
+
+	// 查询请求池
+	queryRequestPool = sync.Pool{
+		New: func() any {
+			return &client.GetSensorDataJSONRequestBody{}
+		},
+	}
+
+	// 批量请求切片池
+	batchRequestPool = sync.Pool{
+		New: func() any {
+			return make([]client.SensorReadWriteRequest, 0, 10) // 预分配10个容量
+		},
+	}
 )
 
 // Worker 工作协程
@@ -70,18 +115,23 @@ func (w *Worker) doSensorDataUpload() {
 	priority := w.generatePriority()
 	data := w.generateRandomData()
 
+	// 从池中获取请求对象
+	request := sensorDataRequestPool.Get().(*client.UploadSensorDataJSONRequestBody)
+	defer sensorDataRequestPool.Put(request)
+
 	// 立即记录发送事件
 	w.statsCollector.PushSentEvent("sensor-data")
 
 	startTime := time.Now()
-	resp, err := w.client.UploadSensorDataWithResponse(context.Background(), client.UploadSensorDataJSONRequestBody{
-		DeviceId:   deviceID,
-		MetricName: client.SensorDataMetricName(metricName),
-		Value:      value,
-		Timestamp:  startTime,
-		Priority:   &priority,
-		Data:       &data,
-	})
+	// 重用request对象
+	request.DeviceId = deviceID
+	request.MetricName = client.SensorDataMetricName(metricName)
+	request.Value = value
+	request.Timestamp = startTime
+	request.Priority = &priority
+	request.Data = &data
+
+	resp, err := w.client.UploadSensorDataWithResponse(context.Background(), *request)
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
@@ -97,18 +147,23 @@ func (w *Worker) doSensorReadWrite() {
 	priority := w.generatePriority()
 	data := w.generateRandomData()
 
+	// 从池中获取请求对象
+	request := sensorRWRequestPool.Get().(*client.SensorReadWriteJSONRequestBody)
+	defer sensorRWRequestPool.Put(request)
+
 	// 立即记录发送事件
 	w.statsCollector.PushSentEvent("sensor-rw")
 
 	startTime := time.Now()
-	resp, err := w.client.SensorReadWriteWithResponse(context.Background(), client.SensorReadWriteJSONRequestBody{
-		DeviceId:   deviceID,
-		MetricName: metricName,
-		NewValue:   value,
-		Timestamp:  startTime,
-		Priority:   &priority,
-		Data:       &data,
-	})
+	// 重用request对象
+	request.DeviceId = deviceID
+	request.MetricName = metricName
+	request.NewValue = value
+	request.Timestamp = startTime
+	request.Priority = &priority
+	request.Data = &data
+
+	resp, err := w.client.SensorReadWriteWithResponse(context.Background(), *request)
 	latency := time.Since(startTime)
 
 	success := err == nil && resp.StatusCode() == 200
@@ -119,9 +174,23 @@ func (w *Worker) doSensorReadWrite() {
 // doBatchSensorRW 批量传感器读写操作
 func (w *Worker) doBatchSensorRW() {
 	batchSize := rand.Intn(10) + 1 // 批量大小 1-10
-	data := make([]client.SensorReadWriteRequest, batchSize)
 
-	for i := 0; i < batchSize; i++ {
+	// 从池中获取批量请求切片
+	data := batchRequestPool.Get().([]client.SensorReadWriteRequest)
+	defer func() {
+		// 清空切片并放回池中
+		data = data[:0]
+		batchRequestPool.Put(data)
+	}()
+
+	// 扩展切片到需要的大小
+	if cap(data) < batchSize {
+		data = make([]client.SensorReadWriteRequest, batchSize)
+	} else {
+		data = data[:batchSize]
+	}
+
+	for i := range batchSize {
 		deviceID := w.generateDeviceID()
 		metricName := w.generateMetricName()
 		value := w.generateValue()
@@ -159,12 +228,16 @@ func (w *Worker) doSensorQuery() {
 	startTime := endTime.Add(-time.Hour) // 查询最近1小时的数据
 	limit := rand.Intn(100) + 1          // 限制 1-100 条记录
 
-	request := client.GetSensorDataJSONRequestBody{
-		DeviceId:  deviceID,
-		StartTime: startTime,
-		EndTime:   endTime,
-		Limit:     &limit,
-	}
+	// 从池中获取请求对象
+	request := queryRequestPool.Get().(*client.GetSensorDataJSONRequestBody)
+	defer queryRequestPool.Put(request)
+
+	// 重用request对象
+	request.DeviceId = deviceID
+	request.StartTime = startTime
+	request.EndTime = endTime
+	request.Limit = &limit
+	request.MetricName = nil // 清空上次的值
 
 	// 随机选择是否指定特定指标
 	if rand.Float64() < 0.5 {
@@ -176,7 +249,7 @@ func (w *Worker) doSensorQuery() {
 	w.statsCollector.PushSentEvent("query")
 
 	reqStartTime := time.Now()
-	resp, err := w.client.GetSensorDataWithResponse(context.Background(), request)
+	resp, err := w.client.GetSensorDataWithResponse(context.Background(), *request)
 	latency := time.Since(reqStartTime)
 
 	success := err == nil && resp.StatusCode() == 200
@@ -231,14 +304,13 @@ func (w *Worker) generatePriority() int {
 
 // generateRandomData 生成固定64字节的负载数据
 func (w *Worker) generateRandomData() string {
-	// 生成固定64字节的数据
-	const (
-		charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-		dataSize = 64 // 固定数据大小
-	)
-	b := make([]byte, dataSize)
+	// 从池中获取字节切片
+	b := byteSlicePool.Get().([]byte)
+	defer byteSlicePool.Put(b)
+
+	// 生成随机数据
 	charId := rand.Intn(len(charset))
-	for i := range b {
+	for i := range dataSize {
 		b[i] = charset[charId]
 		charId = ((charId + 3) / 7 >> 2) % len(charset)
 	}

@@ -1,0 +1,207 @@
+components:
+  schemas:
+    StatsReport:
+      type: object
+      description: 最终统计报告
+      properties:
+        totalElapsed:
+          type: number
+          format: float
+          description: 总运行时间（秒）
+        totalSent:
+          type: integer
+          format: int64
+          description: 发送请求数
+        totalOps:
+          type: integer
+          format: int64
+          description: 完成请求数
+        totalErrors:
+          type: integer
+          format: int64
+          description: 总错误数
+        totalSaveDelayErrors:
+          type: integer
+          format: int64
+          description: 总因为发现落盘时间超时而产生的错误数
+        pending:
+          type: integer
+          format: int64
+          description: 待处理请求数
+        operations:
+          $ref: '#/components/schemas/OperationsStats'
+        highPriorityStats:
+          $ref: '#/components/schemas/HighPriorityStats'
+        performanceMetrics:
+          $ref: '#/components/schemas/PerformanceMetrics'
+        latencyAnalysis:
+          $ref: '#/components/schemas/LatencyAnalysis'
+      required:
+        - totalElapsed
+        - totalSent
+        - totalOps
+        - totalErrors
+        - totalSaveDelayErrors
+        - pending
+        - operations
+        - performanceMetrics
+        - latencyAnalysis
+
+    OperationsStats:
+      type: object
+      description: 各类操作统计
+      properties:
+        sensorData:
+          $ref: '#/components/schemas/OperationStat'
+        sensorRW:
+          $ref: '#/components/schemas/OperationStat'
+        batchRW:
+          $ref: '#/components/schemas/OperationStat'
+        query:
+          $ref: '#/components/schemas/OperationStat'
+      required:
+        - sensorData
+        - sensorRW
+        - batchRW
+        - query
+
+    OperationStat:
+      type: object
+      description: 单个操作类型的统计
+      properties:
+        operations:
+          type: integer
+          format: int64
+          description: 操作数量
+        errors:
+          type: integer
+          format: int64
+          description: 错误数量
+      required:
+        - operations
+        - errors
+
+    HighPriorityStats:
+      type: object
+      description: 高优先级请求统计（Priority≥3）
+      properties:
+        sensorDataCount:
+          type: integer
+          format: int64
+          description: 传感器数据上报高优先级请求数
+        sensorRWCount:
+          type: integer
+          format: int64
+          description: 传感器读写操作高优先级请求数
+        batchRWCount:
+          type: integer
+          format: int64
+          description: 批量操作高优先级请求数
+        queryCount:
+          type: integer
+          format: int64
+          description: 查询操作高优先级请求数
+        totalCount:
+          type: integer
+          format: int64
+          description: 高优先级请求总数
+        percentage:
+          type: number
+          format: float
+          description: 高优先级请求占比（%）
+      required:
+        - sensorDataCount
+        - sensorRWCount
+        - batchRWCount
+        - queryCount
+        - totalCount
+        - percentage
+
+    PerformanceMetrics:
+      type: object
+      description: 性能指标
+      properties:
+        avgSentQPS:
+          type: number
+          format: float
+          description: 平均发送 QPS
+        avgCompletedQPS:
+          type: number
+          format: float
+          description: 平均完成 QPS
+        errorRate:
+          type: number
+          format: float
+          description: 错误率（%）
+      required:
+        - avgSentQPS
+        - avgCompletedQPS
+        - errorRate
+
+    LatencyAnalysis:
+      type: object
+      description: 延迟分析
+      properties:
+        sensorData:
+          $ref: '#/components/schemas/LatencyDistribution'
+        sensorRW:
+          $ref: '#/components/schemas/LatencyDistribution'
+        batchRW:
+          $ref: '#/components/schemas/LatencyDistribution'
+        query:
+          $ref: '#/components/schemas/LatencyDistribution'
+      required:
+        - sensorData
+        - sensorRW
+        - batchRW
+        - query
+
+    LatencyDistribution:
+      type: object
+      description: 延迟分布统计
+      properties:
+        avg:
+          type: number
+          format: float
+          description: 平均延迟（ms）
+        min:
+          type: number
+          format: float
+          description: 最小延迟（ms）
+        max:
+          type: number
+          format: float
+          description: 最大延迟（ms）
+        buckets:
+          type: array
+          description: 延迟分布桶计数，对应 [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]ms 及 >5000ms
+          items:
+            type: integer
+            format: int64
+        highPriorityCount:
+          type: integer
+          format: int64
+          description: 高优先级请求数量
+        highPriorityAvg:
+          type: number
+          format: float
+          description: 高优先级平均延迟（ms）
+        highPriorityMin:
+          type: number
+          format: float
+          description: 高优先级最小延迟（ms）
+        highPriorityMax:
+          type: number
+          format: float
+          description: 高优先级最大延迟（ms）
+        highPriorityBuckets:
+          type: array
+          description: 高优先级延迟分布桶计数，对应 [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]ms 及 >5000ms
+          items:
+            type: integer
+            format: int64
+      required:
+        - avg
+        - min
+        - max
+        - buckets

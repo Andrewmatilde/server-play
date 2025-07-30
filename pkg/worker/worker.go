@@ -100,20 +100,8 @@ func New(id int, client *client.ClientWithResponses, statsCollector *stats.Colle
 }
 
 // ExecuteOperation 执行单个操作（用于QPS模式的独立goroutine）
-func (w *Worker) ExecuteOperation(operation string) {
-	switch operation {
-	case "sensor-data":
-		w.doSensorDataUpload()
-	case "sensor-rw":
-		w.doSensorReadWrite()
-	case "batch-rw":
-		w.doBatchSensorRW()
-	case "query":
-		w.doSensorQuery()
-	default:
-		// 未知操作类型，记录错误
-		w.statsCollector.PushResult(operation, 0, 0, false)
-	}
+func (w *Worker) ExecuteOperation() {
+	w.doSensorDataUpload()
 }
 
 // doSensorDataUpload 传感器数据上报
@@ -153,88 +141,6 @@ func (w *Worker) doSensorDataUpload() {
 	}
 }
 
-// doSensorReadWrite 传感器读写操作
-func (w *Worker) doSensorReadWrite() {
-	deviceID := w.generateDeviceID()
-	metricName := w.generateMetricName()
-	value := w.generateValue()
-	priority := w.generatePriority()
-	data := w.generateRandomData()
-
-	// 从池中获取请求对象
-	request := sensorRWRequestPool.Get().(*client.SensorReadWriteJSONRequestBody)
-	defer sensorRWRequestPool.Put(request)
-
-	// 立即记录发送事件
-	w.statsCollector.PushSentEvent("sensor-rw")
-
-	startTime := time.Now()
-	// 重用request对象
-	request.DeviceId = deviceID
-	request.MetricName = metricName
-	request.NewValue = value
-	request.Timestamp = startTime
-	request.Priority = &priority
-	request.Data = &data
-
-	resp, err := w.client.SensorReadWriteWithResponse(context.Background(), *request)
-	latency := time.Since(startTime)
-
-	success := err == nil && resp.StatusCode() == 200
-	// 记录完成事件
-	w.statsCollector.PushCompletedResult("sensor-rw", latency, priority, success)
-}
-
-// doBatchSensorRW 批量传感器读写操作
-func (w *Worker) doBatchSensorRW() {
-	batchSize := rand.Intn(10) + 1 // 批量大小 1-10
-
-	// 从池中获取批量请求切片
-	data := batchRequestPool.Get().([]client.SensorReadWriteRequest)
-	defer func() {
-		// 清空切片并放回池中
-		data = data[:0]
-		batchRequestPool.Put(data)
-	}()
-
-	// 扩展切片到需要的大小
-	if cap(data) < batchSize {
-		data = make([]client.SensorReadWriteRequest, batchSize)
-	} else {
-		data = data[:batchSize]
-	}
-
-	for i := range batchSize {
-		deviceID := w.generateDeviceID()
-		metricName := w.generateMetricName()
-		value := w.generateValue()
-		priority := w.generatePriority()
-		randomData := w.generateRandomData()
-
-		data[i] = client.SensorReadWriteRequest{
-			DeviceId:   deviceID,
-			MetricName: metricName,
-			NewValue:   value,
-			Timestamp:  time.Now(),
-			Priority:   &priority,
-			Data:       &randomData,
-		}
-	}
-
-	// 立即记录发送事件
-	w.statsCollector.PushSentEvent("batch-rw")
-
-	startTime := time.Now()
-	resp, err := w.client.BatchSensorReadWriteWithResponse(context.Background(), client.BatchSensorReadWriteJSONRequestBody{
-		Data: data,
-	})
-	latency := time.Since(startTime)
-
-	success := err == nil && resp.StatusCode() == 200
-	// 记录完成事件
-	w.statsCollector.PushCompletedResult("batch-rw", latency, 0, success)
-}
-
 // verifyDataInMySQL 验证MySQL中的数据写入
 func (w *Worker) verifyDataInMySQL(deviceID, metricName string, priority int) {
 	// 等待3秒让数据写入MySQL
@@ -261,42 +167,6 @@ func (w *Worker) verifyDataInMySQL(deviceID, metricName string, priority int) {
 	// 记录验证结果
 	success := err == nil && count > 0
 	w.statsCollector.PushCompletedResult("verify-query", queryLatency, priority, success)
-}
-
-// doSensorQuery 传感器数据查询
-func (w *Worker) doSensorQuery() {
-	deviceID := w.generateDeviceID()
-	endTime := time.Now()
-	startTime := endTime.Add(-time.Hour) // 查询最近1小时的数据
-	limit := rand.Intn(100) + 1          // 限制 1-100 条记录
-
-	// 从池中获取请求对象
-	request := queryRequestPool.Get().(*client.GetSensorDataJSONRequestBody)
-	defer queryRequestPool.Put(request)
-
-	// 重用request对象
-	request.DeviceId = deviceID
-	request.StartTime = startTime
-	request.EndTime = endTime
-	request.Limit = &limit
-	request.MetricName = nil // 清空上次的值
-
-	// 随机选择是否指定特定指标
-	if rand.Float64() < 0.5 {
-		metricName := client.GetSensorDataRequestMetricName(w.generateMetricName())
-		request.MetricName = &metricName
-	}
-
-	// 立即记录发送事件
-	w.statsCollector.PushSentEvent("query")
-
-	reqStartTime := time.Now()
-	resp, err := w.client.GetSensorDataWithResponse(context.Background(), *request)
-	latency := time.Since(reqStartTime)
-
-	success := err == nil && resp.StatusCode() == 200
-	// 记录完成事件
-	w.statsCollector.PushCompletedResult("query", latency, 0, success)
 }
 
 // generateDeviceID 生成设备ID

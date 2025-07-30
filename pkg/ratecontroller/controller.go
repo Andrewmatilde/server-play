@@ -62,9 +62,9 @@ func (rc *Controller) runQPSMode(ctx context.Context) {
 		return
 	}
 
-	interval := time.Duration(1000000000 / rc.config.QPS * 8) // 纳秒
+	interval := time.Duration(1000000000 / rc.config.QPS * 16) // 纳秒
 
-	for i := 0; i < 8; i++ {
+	for i := 0; i < 16; i++ {
 		go func() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
@@ -74,10 +74,8 @@ func (rc *Controller) runQPSMode(ctx context.Context) {
 					return
 				case <-ticker.C:
 					go func() {
-						operation := rc.selectOperationType()
-
 						w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
-						w.ExecuteOperation(operation)
+						w.ExecuteOperation()
 					}()
 				}
 			}
@@ -102,8 +100,7 @@ func (rc *Controller) runConcurrencyMode(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				default:
-					operation := rc.selectOperationType()
-					w.ExecuteOperation(operation)
+					w.ExecuteOperation()
 				}
 			}
 		}(i)

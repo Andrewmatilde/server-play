@@ -20,20 +20,28 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"math/rand"
 	"splay/client"
 	"splay/pkg/config"
 	"splay/pkg/stats"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 // 常量定义
 const (
-	charset  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	dataSize = 64 // 固定数据大小
+	charset              = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	dataSize             = 64  // 固定数据大小
+	queryTriggerInterval = 100 // 每100个读请求触发一次查询验证
 )
+
+// 查询计数器，用于每100个读请求触发一次验证
+var queryCounter int64
 
 // 对象池
 var (
@@ -137,6 +145,11 @@ func (w *Worker) doSensorDataUpload() {
 	success := err == nil && resp.StatusCode() == 200
 	// 记录完成事件
 	w.statsCollector.PushCompletedResult("sensor-data", latency, priority, success)
+
+	// 每100个写入请求后启动goroutine进行查询验证
+	if atomic.AddInt64(&queryCounter, 1)%queryTriggerInterval == 0 {
+		go w.verifyDataInMySQL(deviceID, metricName, value, priority, data, startTime)
+	}
 }
 
 // doSensorReadWrite 传感器读写操作
@@ -219,6 +232,34 @@ func (w *Worker) doBatchSensorRW() {
 	success := err == nil && resp.StatusCode() == 200
 	// 记录完成事件
 	w.statsCollector.PushCompletedResult("batch-rw", latency, 0, success)
+}
+
+// verifyDataInMySQL 验证MySQL中的数据写入
+func (w *Worker) verifyDataInMySQL(deviceID, metricName string, value float64, priority int, data string, writeTime time.Time) {
+	// 等待3秒让数据写入MySQL
+	time.Sleep(3 * time.Second)
+
+	// 连接MySQL数据库
+	db, err := sql.Open("mysql", w.config.MySQLDSN)
+	if err != nil {
+		w.statsCollector.PushCompletedResult("verify-query", 0, priority, false)
+		return
+	}
+	defer db.Close()
+
+	// 查询刚写入的数据
+	queryStart := time.Now()
+	query := `SELECT COUNT(*) FROM time_series_data 
+		WHERE device_id = ? AND metric_name = ? AND ABS(value - ?) < 0.001 
+		AND timestamp = ?`
+
+	var count int
+	err = db.QueryRow(query, deviceID, metricName, value, writeTime).Scan(&count)
+	queryLatency := time.Since(queryStart)
+
+	// 记录验证结果
+	success := err == nil && count > 0
+	w.statsCollector.PushCompletedResult("verify-query", queryLatency, priority, success)
 }
 
 // doSensorQuery 传感器数据查询

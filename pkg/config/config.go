@@ -43,6 +43,9 @@ type Config struct {
 	KeyRange       int `json:"key_range"`        // 设备ID范围
 	ReportInterval int `json:"report_interval"`  // 报告间隔（秒）
 
+	// MySQL配置
+	MySQLDSN string `json:"mysql_dsn"` // MySQL数据源名称
+
 	// 内部计算字段
 	totalRatio         float64       `json:"-"`
 	durationTime       time.Duration `json:"-"`
@@ -62,6 +65,7 @@ func New() *Config {
 		QueryRatio:      0.05,
 		KeyRange:        1000,
 		ReportInterval:  1,
+		MySQLDSN:        "user:password@tcp(localhost:3306)/bench_server?charset=utf8mb4&parseTime=True&loc=Local",
 	}
 	c.calculateDerivedFields()
 	return c

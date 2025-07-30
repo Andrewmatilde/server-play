@@ -107,6 +107,9 @@ func main() {
 		log.Fatalf("Failed to marshal stats report: %v", err)
 	}
 
+	fmt.Println("==========上报数据==========\n", string(s))
+	fmt.Println("==========上报数据==========")
+
 	// 创建请求
 	req, err := http.NewRequest("POST", cfg.ReportURL, bytes.NewBuffer(s))
 	if err != nil {

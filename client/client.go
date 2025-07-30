@@ -309,7 +309,13 @@ func NewClient(server string, opts ...ClientOption) (*Client, error) {
 	}
 	// create httpClient, if not already present
 	if client.Client == nil {
-		client.Client = &http.Client{}
+		client.Client = &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:        0,
+				MaxIdleConnsPerHost: 100,
+				MaxConnsPerHost:     0,
+			},
+		}
 	}
 	return &client, nil
 }

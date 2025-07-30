@@ -62,19 +62,19 @@ func (rc *Controller) runQPSMode(ctx context.Context) {
 		return
 	}
 
-	interval := time.Duration(1000000000 / rc.config.QPS * 16) // 纳秒
+	interval := time.Duration(1000000000 / rc.config.QPS * 32) // 纳秒
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 32; i++ {
 		go func() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
+			w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
 					go func() {
-						w := worker.New(0, rc.httpClient, rc.statsCollector, rc.config)
 						w.ExecuteOperation()
 					}()
 				}

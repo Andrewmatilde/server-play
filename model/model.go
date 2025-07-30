@@ -5,20 +5,11 @@ package model
 
 // HighPriorityStats 高优先级请求统计（Priority≥3）
 type HighPriorityStats struct {
-	// BatchRWCount 批量操作高优先级请求数
-	BatchRWCount int64 `json:"batchRWCount"`
-
 	// Percentage 高优先级请求占比（%）
 	Percentage float32 `json:"percentage"`
 
-	// QueryCount 查询操作高优先级请求数
-	QueryCount int64 `json:"queryCount"`
-
 	// SensorDataCount 传感器数据上报高优先级请求数
 	SensorDataCount int64 `json:"sensorDataCount"`
-
-	// SensorRWCount 传感器读写操作高优先级请求数
-	SensorRWCount int64 `json:"sensorRWCount"`
 
 	// TotalCount 高优先级请求总数
 	TotalCount int64 `json:"totalCount"`
@@ -26,17 +17,8 @@ type HighPriorityStats struct {
 
 // LatencyAnalysis 延迟分析
 type LatencyAnalysis struct {
-	// BatchRW 延迟分布统计
-	BatchRW LatencyDistribution `json:"batchRW"`
-
-	// Query 延迟分布统计
-	Query LatencyDistribution `json:"query"`
-
 	// SensorData 延迟分布统计
 	SensorData LatencyDistribution `json:"sensorData"`
-
-	// SensorRW 延迟分布统计
-	SensorRW LatencyDistribution `json:"sensorRW"`
 }
 
 // LatencyDistribution 延迟分布统计
@@ -80,17 +62,8 @@ type OperationStat struct {
 
 // OperationsStats 各类操作统计
 type OperationsStats struct {
-	// BatchRW 单个操作类型的统计
-	BatchRW OperationStat `json:"batchRW"`
-
-	// Query 单个操作类型的统计
-	Query OperationStat `json:"query"`
-
 	// SensorData 单个操作类型的统计
 	SensorData OperationStat `json:"sensorData"`
-
-	// SensorRW 单个操作类型的统计
-	SensorRW OperationStat `json:"sensorRW"`
 }
 
 // PerformanceMetrics 性能指标
@@ -107,6 +80,9 @@ type PerformanceMetrics struct {
 
 // StatsReport 最终统计报告
 type StatsReport struct {
+	// HighPriorityAvgDelayLatency 高优先级平均延迟（ms）
+	HighPriorityAvgDelayLatency *float32 `json:"highPriorityAvgDelayLatency,omitempty"`
+
 	// HighPriorityStats 高优先级请求统计（Priority≥3）
 	HighPriorityStats *HighPriorityStats `json:"highPriorityStats,omitempty"`
 
@@ -122,6 +98,9 @@ type StatsReport struct {
 	// PerformanceMetrics 性能指标
 	PerformanceMetrics PerformanceMetrics `json:"performanceMetrics"`
 
+	// TotalAvgLatency 总平均延迟（ms）
+	TotalAvgLatency *float32 `json:"totalAvgLatency,omitempty"`
+
 	// TotalElapsed 总运行时间（秒）
 	TotalElapsed float32 `json:"totalElapsed"`
 
@@ -136,4 +115,7 @@ type StatsReport struct {
 
 	// TotalSent 发送请求数
 	TotalSent int64 `json:"totalSent"`
+
+	// TotalVerifyErrorRate 总验证错误率（%）, 验证完成请求 3s 后数据是否落盘。
+	TotalVerifyErrorRate *float32 `json:"totalVerifyErrorRate,omitempty"`
 }

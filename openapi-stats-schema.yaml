@@ -24,6 +24,18 @@ components:
           type: integer
           format: int64
           description: 总因为发现落盘时间超时而产生的错误数
+        totalAvgLatency:
+          type: number
+          format: float
+          description: 总平均延迟（ms）
+        totalVerifyErrorRate:
+          type: number
+          format: float
+          description: 总验证错误率（%）, 验证完成请求 3s 后数据是否落盘。
+        highPriorityAvgDelayLatency:
+          type: number
+          format: float
+          description: 高优先级平均延迟（ms）
         pending:
           type: integer
           format: int64
@@ -53,17 +65,8 @@ components:
       properties:
         sensorData:
           $ref: '#/components/schemas/OperationStat'
-        sensorRW:
-          $ref: '#/components/schemas/OperationStat'
-        batchRW:
-          $ref: '#/components/schemas/OperationStat'
-        query:
-          $ref: '#/components/schemas/OperationStat'
       required:
         - sensorData
-        - sensorRW
-        - batchRW
-        - query
 
     OperationStat:
       type: object
@@ -89,18 +92,6 @@ components:
           type: integer
           format: int64
           description: 传感器数据上报高优先级请求数
-        sensorRWCount:
-          type: integer
-          format: int64
-          description: 传感器读写操作高优先级请求数
-        batchRWCount:
-          type: integer
-          format: int64
-          description: 批量操作高优先级请求数
-        queryCount:
-          type: integer
-          format: int64
-          description: 查询操作高优先级请求数
         totalCount:
           type: integer
           format: int64
@@ -111,9 +102,6 @@ components:
           description: 高优先级请求占比（%）
       required:
         - sensorDataCount
-        - sensorRWCount
-        - batchRWCount
-        - queryCount
         - totalCount
         - percentage
 
@@ -144,17 +132,8 @@ components:
       properties:
         sensorData:
           $ref: '#/components/schemas/LatencyDistribution'
-        sensorRW:
-          $ref: '#/components/schemas/LatencyDistribution'
-        batchRW:
-          $ref: '#/components/schemas/LatencyDistribution'
-        query:
-          $ref: '#/components/schemas/LatencyDistribution'
       required:
         - sensorData
-        - sensorRW
-        - batchRW
-        - query
 
     LatencyDistribution:
       type: object

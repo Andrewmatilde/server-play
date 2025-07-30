@@ -20,7 +20,6 @@ package ratecontroller
 
 import (
 	"context"
-	"math/rand"
 	"splay/client"
 	"splay/pkg/config"
 	"splay/pkg/stats"
@@ -115,5 +114,5 @@ func (rc *Controller) runConcurrencyMode(ctx context.Context) {
 
 // selectOperationType 根据配置的比例选择操作类型
 func (rc *Controller) selectOperationType() string {
-	return rc.config.GetOperationType(rand.Float64())
+	return "sensor-data"
 }

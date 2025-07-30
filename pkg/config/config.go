@@ -33,12 +33,6 @@ type Config struct {
 	QPS         int    `json:"qps"`
 	Concurrency int    `json:"concurrency"`
 
-	// 操作比例配置
-	SensorDataRatio float64 `json:"sensor_data_ratio"` // 传感器数据上报比例
-	SensorRWRatio   float64 `json:"sensor_rw_ratio"`   // 传感器读写操作比例
-	BatchRWRatio    float64 `json:"batch_rw_ratio"`    // 批量操作比例
-	QueryRatio      float64 `json:"query_ratio"`       // 查询操作比例
-
 	// 数据配置
 	KeyRange       int `json:"key_range"`       // 设备ID范围
 	ReportInterval int `json:"report_interval"` // 报告间隔（秒）
@@ -58,18 +52,14 @@ type Config struct {
 
 func New() *Config {
 	c := &Config{
-		ServerURL:       "http://localhost:8080",
-		Duration:        30,
-		Mode:            "qps",
-		QPS:             100,
-		Concurrency:     10,
-		SensorDataRatio: 0.7,
-		SensorRWRatio:   0.2,
-		BatchRWRatio:    0.05,
-		QueryRatio:      0.05,
-		KeyRange:        1000,
-		ReportInterval:  1,
-		MySQLDSN:        "user:password@tcp(localhost:3306)/bench_server?charset=utf8mb4&parseTime=True&loc=Local",
+		ServerURL:      "http://localhost:8080",
+		Duration:       30,
+		Mode:           "qps",
+		QPS:            100,
+		Concurrency:    10,
+		KeyRange:       1000,
+		ReportInterval: 1,
+		MySQLDSN:       "user:password@tcp(localhost:3306)/bench_server?charset=utf8mb4&parseTime=True&loc=Local",
 	}
 	c.calculateDerivedFields()
 	return c
@@ -103,7 +93,6 @@ func (c *Config) SaveToFile(filename string) error {
 }
 
 func (c *Config) calculateDerivedFields() {
-	c.totalRatio = c.SensorDataRatio + c.SensorRWRatio + c.BatchRWRatio + c.QueryRatio
 	c.durationTime = time.Duration(c.Duration) * time.Second
 	c.reportIntervalTime = time.Duration(c.ReportInterval) * time.Second
 }
@@ -129,11 +118,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("操作比例总和必须在(0,1]范围内，当前为: %.3f", c.totalRatio)
 	}
 
-	// 验证各个比例
-	if c.SensorDataRatio < 0 || c.SensorRWRatio < 0 || c.BatchRWRatio < 0 || c.QueryRatio < 0 {
-		return fmt.Errorf("所有操作比例必须大于等于0")
-	}
-
 	// 验证键值范围
 	if c.KeyRange <= 0 {
 		return fmt.Errorf("设备ID范围必须大于0")
@@ -152,11 +136,6 @@ func (c *Config) Print() {
 	} else {
 		fmt.Printf("并发协程数: %d\n", c.Concurrency)
 	}
-	fmt.Printf("操作比例:\n")
-	fmt.Printf("  传感器数据上报: %.2f\n", c.SensorDataRatio)
-	fmt.Printf("  传感器读写操作: %.2f\n", c.SensorRWRatio)
-	fmt.Printf("  批量操作: %.2f\n", c.BatchRWRatio)
-	fmt.Printf("  查询操作: %.2f\n", c.QueryRatio)
 	fmt.Printf("  总比例: %.2f\n", c.totalRatio)
 	fmt.Printf("设备ID范围: %d\n", c.KeyRange)
 	fmt.Printf("数据大小: 64 字节（固定）\n")
@@ -172,27 +151,4 @@ func (c *Config) GetDuration() time.Duration {
 // GetReportInterval 获取报告间隔
 func (c *Config) GetReportInterval() time.Duration {
 	return c.reportIntervalTime
-}
-
-// GetOperationType 根据随机数和比例返回操作类型
-func (c *Config) GetOperationType(rand float64) string {
-	// 将随机数映射到实际比例范围
-	rand = rand * c.totalRatio
-
-	if rand < c.SensorDataRatio {
-		return "sensor-data"
-	}
-	rand -= c.SensorDataRatio
-
-	if rand < c.SensorRWRatio {
-		return "sensor-rw"
-	}
-	rand -= c.SensorRWRatio
-
-	if rand < c.BatchRWRatio {
-		return "batch-rw"
-	}
-	rand -= c.BatchRWRatio
-
-	return "query"
 }

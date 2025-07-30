@@ -225,26 +225,14 @@ type Result struct {
 type Collector struct {
 	// 各操作的延迟统计
 	sensorDataStats *LatencyStats
-	sensorRWStats   *LatencyStats
-	batchRWStats    *LatencyStats
-	queryStats      *LatencyStats
 	verifyStats     *LatencyStats
 
 	// 操作计数
 	sensorDataSent   int64
-	sensorRWSent     int64
-	batchRWSent      int64
-	querySent        int64
 	verifySent       int64
 	sensorDataOps    int64
-	sensorRWOps      int64
-	batchRWOps       int64
-	queryOps         int64
 	verifyOps        int64
 	sensorDataErrors int64
-	sensorRWErrors   int64
-	batchRWErrors    int64
-	queryErrors      int64
 	verifyErrors     int64
 
 	// 时间统计
@@ -253,14 +241,8 @@ type Collector struct {
 
 	// 上次统计的操作数（用于计算瞬时 QPS）
 	lastSensorDataSent int64
-	lastSensorRWSent   int64
-	lastBatchRWSent    int64
-	lastQuerySent      int64
 	lastVerifySent     int64
 	lastSensorDataOps  int64
-	lastSensorRWOps    int64
-	lastBatchRWOps     int64
-	lastQueryOps       int64
 	lastVerifyOps      int64
 
 	// 用于推送统计结果的通道
@@ -271,9 +253,6 @@ func NewCollector(ctx context.Context) *Collector {
 	now := time.Now()
 	sc := &Collector{
 		sensorDataStats: NewLatencyStats(),
-		sensorRWStats:   NewLatencyStats(),
-		batchRWStats:    NewLatencyStats(),
-		queryStats:      NewLatencyStats(),
 		verifyStats:     NewLatencyStats(),
 		startTime:       now,
 		lastPrintTime:   now,
@@ -360,12 +339,6 @@ func (sc *Collector) processResult(result Result) {
 		switch result.Operation {
 		case "sensor-data":
 			atomic.AddInt64(&sc.sensorDataSent, 1)
-		case "sensor-rw":
-			atomic.AddInt64(&sc.sensorRWSent, 1)
-		case "batch-rw":
-			atomic.AddInt64(&sc.batchRWSent, 1)
-		case "query":
-			atomic.AddInt64(&sc.querySent, 1)
 		case "verify-query":
 			atomic.AddInt64(&sc.verifySent, 1)
 		}
@@ -379,27 +352,6 @@ func (sc *Collector) processResult(result Result) {
 			} else {
 				atomic.AddInt64(&sc.sensorDataErrors, 1)
 			}
-		case "sensor-rw":
-			if result.Success {
-				atomic.AddInt64(&sc.sensorRWOps, 1)
-				sc.sensorRWStats.Record(result.Latency, result.Priority)
-			} else {
-				atomic.AddInt64(&sc.sensorRWErrors, 1)
-			}
-		case "batch-rw":
-			if result.Success {
-				atomic.AddInt64(&sc.batchRWOps, 1)
-				sc.batchRWStats.Record(result.Latency, result.Priority)
-			} else {
-				atomic.AddInt64(&sc.batchRWErrors, 1)
-			}
-		case "query":
-			if result.Success {
-				atomic.AddInt64(&sc.queryOps, 1)
-				sc.queryStats.Record(result.Latency, result.Priority)
-			} else {
-				atomic.AddInt64(&sc.queryErrors, 1)
-			}
 		case "verify-query":
 			if result.Success {
 				atomic.AddInt64(&sc.verifyOps, 1)
@@ -412,12 +364,9 @@ func (sc *Collector) processResult(result Result) {
 }
 
 func (sc *Collector) GetCurrentTotals() (int64, int64, int64, int64) {
-	totalSent := atomic.LoadInt64(&sc.sensorDataSent) + atomic.LoadInt64(&sc.sensorRWSent) +
-		atomic.LoadInt64(&sc.batchRWSent) + atomic.LoadInt64(&sc.querySent)
-	totalOps := atomic.LoadInt64(&sc.sensorDataOps) + atomic.LoadInt64(&sc.sensorRWOps) +
-		atomic.LoadInt64(&sc.batchRWOps) + atomic.LoadInt64(&sc.queryOps)
-	totalErrors := atomic.LoadInt64(&sc.sensorDataErrors) + atomic.LoadInt64(&sc.sensorRWErrors) +
-		atomic.LoadInt64(&sc.batchRWErrors) + atomic.LoadInt64(&sc.queryErrors)
+	totalSent := atomic.LoadInt64(&sc.sensorDataSent)
+	totalOps := atomic.LoadInt64(&sc.sensorDataOps)
+	totalErrors := atomic.LoadInt64(&sc.sensorDataErrors)
 	pending := totalSent - totalOps - totalErrors
 
 	return totalSent, totalOps, totalErrors, pending
@@ -432,23 +381,17 @@ func (sc *Collector) PrintRealtime() {
 
 	// 计算瞬时发送速率
 	currentSensorDataSent := atomic.LoadInt64(&sc.sensorDataSent)
-	currentSensorRWSent := atomic.LoadInt64(&sc.sensorRWSent)
-	currentBatchRWSent := atomic.LoadInt64(&sc.batchRWSent)
-	currentQuerySent := atomic.LoadInt64(&sc.querySent)
 	currentVerifySent := atomic.LoadInt64(&sc.verifySent)
 
-	instantSendQPS := float64(currentSensorDataSent+currentSensorRWSent+currentBatchRWSent+currentQuerySent+currentVerifySent-
-		sc.lastSensorDataSent-sc.lastSensorRWSent-sc.lastBatchRWSent-sc.lastQuerySent-sc.lastVerifySent) / elapsed
+	instantSendQPS := float64(currentSensorDataSent+currentVerifySent-
+		sc.lastSensorDataSent-sc.lastVerifySent) / elapsed
 
 	// 计算瞬时完成速率
 	currentSensorDataOps := atomic.LoadInt64(&sc.sensorDataOps)
-	currentSensorRWOps := atomic.LoadInt64(&sc.sensorRWOps)
-	currentBatchRWOps := atomic.LoadInt64(&sc.batchRWOps)
-	currentQueryOps := atomic.LoadInt64(&sc.queryOps)
 	currentVerifyOps := atomic.LoadInt64(&sc.verifyOps)
 
-	instantDoneQPS := float64(currentSensorDataOps+currentSensorRWOps+currentBatchRWOps+currentQueryOps+currentVerifyOps-
-		sc.lastSensorDataOps-sc.lastSensorRWOps-sc.lastBatchRWOps-sc.lastQueryOps-sc.lastVerifyOps) / elapsed
+	instantDoneQPS := float64(currentSensorDataOps+currentVerifyOps-
+		sc.lastSensorDataOps-sc.lastVerifyOps) / elapsed
 
 	// 计算平均速率
 	avgSendQPS := float64(totalSent) / totalElapsed
@@ -456,44 +399,29 @@ func (sc *Collector) PrintRealtime() {
 
 	// 获取延迟统计
 	sensorDataAvgLatency, _, _, _ := sc.sensorDataStats.GetStats()
-	sensorRWAvgLatency, _, _, _ := sc.sensorRWStats.GetStats()
-	batchRWAvgLatency, _, _, _ := sc.batchRWStats.GetStats()
-	queryAvgLatency, _, _, _ := sc.queryStats.GetStats()
 	verifyAvgLatency, _, _, _ := sc.verifyStats.GetStats()
 
 	// 获取高优先级请求延迟统计
 	sensorDataHighAvgLatency, _, _, _, sensorDataHighCount := sc.sensorDataStats.GetHighPriorityStats()
-	sensorRWHighAvgLatency, _, _, _, sensorRWHighCount := sc.sensorRWStats.GetHighPriorityStats()
-	batchRWHighAvgLatency, _, _, _, batchRWHighCount := sc.batchRWStats.GetHighPriorityStats()
-	queryHighAvgLatency, _, _, _, queryHighCount := sc.queryStats.GetHighPriorityStats()
 	verifyHighAvgLatency, _, _, _, verifyHighCount := sc.verifyStats.GetHighPriorityStats()
 
 	fmt.Printf("[%.1fs] 发送QPS: %.1f | 完成QPS: %.1f | 平均发送: %.1f | 平均完成: %.1f | 待处理: %d | 错误: %d\n",
 		totalElapsed, instantSendQPS, instantDoneQPS, avgSendQPS, avgDoneQPS, pending, totalErrors)
-	fmt.Printf("       延迟(ms): 上报%.1f 读写%.1f 批量%.1f 查询%.1f 验证%.1f\n",
-		sensorDataAvgLatency, sensorRWAvgLatency, batchRWAvgLatency, queryAvgLatency, verifyAvgLatency)
+	fmt.Printf("       延迟(ms): 上报%.1f 验证%.1f\n",
+		sensorDataAvgLatency, verifyAvgLatency)
 
 	// 显示高优先级请求统计
-	totalHighPriorityCount := sensorDataHighCount + sensorRWHighCount + batchRWHighCount + queryHighCount + verifyHighCount
+	totalHighPriorityCount := sensorDataHighCount + verifyHighCount
 	if totalHighPriorityCount > 0 {
-		fmt.Printf("       高优先级延迟(ms): 上报%.1f(%d) 读写%.1f(%d) 批量%.1f(%d) 查询%.1f(%d) 验证%.1f(%d)\n",
+		fmt.Printf("       高优先级延迟(ms): 上报%.1f(%d) 验证%.1f(%d)\n",
 			sensorDataHighAvgLatency, sensorDataHighCount,
-			sensorRWHighAvgLatency, sensorRWHighCount,
-			batchRWHighAvgLatency, batchRWHighCount,
-			queryHighAvgLatency, queryHighCount,
 			verifyHighAvgLatency, verifyHighCount)
 	}
 
 	// 更新上次统计
 	sc.lastSensorDataSent = currentSensorDataSent
-	sc.lastSensorRWSent = currentSensorRWSent
-	sc.lastBatchRWSent = currentBatchRWSent
-	sc.lastQuerySent = currentQuerySent
 	sc.lastVerifySent = currentVerifySent
 	sc.lastSensorDataOps = currentSensorDataOps
-	sc.lastSensorRWOps = currentSensorRWOps
-	sc.lastBatchRWOps = currentBatchRWOps
-	sc.lastQueryOps = currentQueryOps
 	sc.lastVerifyOps = currentVerifyOps
 	sc.lastPrintTime = now
 }
@@ -510,27 +438,18 @@ func (sc *Collector) PrintFinalReport() {
 	fmt.Printf("发送请求数: %d\n", totalSent)
 	fmt.Printf("完成请求数: %d\n", totalOps)
 	fmt.Printf("  传感器数据上报: %d (错误: %d)\n", atomic.LoadInt64(&sc.sensorDataOps), atomic.LoadInt64(&sc.sensorDataErrors))
-	fmt.Printf("  传感器读写操作: %d (错误: %d)\n", atomic.LoadInt64(&sc.sensorRWOps), atomic.LoadInt64(&sc.sensorRWErrors))
-	fmt.Printf("  批量操作: %d (错误: %d)\n", atomic.LoadInt64(&sc.batchRWOps), atomic.LoadInt64(&sc.batchRWErrors))
-	fmt.Printf("  查询操作: %d (错误: %d)\n", atomic.LoadInt64(&sc.queryOps), atomic.LoadInt64(&sc.queryErrors))
 	fmt.Printf("  验证操作: %d (错误: %d)\n", atomic.LoadInt64(&sc.verifyOps), atomic.LoadInt64(&sc.verifyErrors))
 	fmt.Printf("待处理请求: %d\n", pending)
 	fmt.Printf("总错误数: %d\n", totalErrors)
 
 	// 显示高优先级请求统计
 	_, _, _, _, sensorDataHighCount := sc.sensorDataStats.GetHighPriorityStats()
-	_, _, _, _, sensorRWHighCount := sc.sensorRWStats.GetHighPriorityStats()
-	_, _, _, _, batchRWHighCount := sc.batchRWStats.GetHighPriorityStats()
-	_, _, _, _, queryHighCount := sc.queryStats.GetHighPriorityStats()
 	_, _, _, _, verifyHighCount := sc.verifyStats.GetHighPriorityStats()
-	totalHighPriorityCount := sensorDataHighCount + sensorRWHighCount + batchRWHighCount + queryHighCount + verifyHighCount
+	totalHighPriorityCount := sensorDataHighCount + verifyHighCount
 
 	if totalHighPriorityCount > 0 {
 		fmt.Printf("\n高优先级请求 (Priority≥3) 统计:\n")
 		fmt.Printf("  传感器数据上报: %d\n", sensorDataHighCount)
-		fmt.Printf("  传感器读写操作: %d\n", sensorRWHighCount)
-		fmt.Printf("  批量操作: %d\n", batchRWHighCount)
-		fmt.Printf("  查询操作: %d\n", queryHighCount)
 		fmt.Printf("  验证操作: %d\n", verifyHighCount)
 		fmt.Printf("  高优先级请求总数: %d (占比: %.1f%%)\n", totalHighPriorityCount, float64(totalHighPriorityCount)*100/float64(totalOps))
 	}
@@ -541,23 +460,16 @@ func (sc *Collector) PrintFinalReport() {
 		if totalOps+totalErrors > 0 {
 			fmt.Printf("错误率: %.2f%%\n", float64(totalErrors)*100/float64(totalOps+totalErrors))
 		}
+		if atomic.LoadInt64(&sc.verifyOps) > 0 {
+			fmt.Printf("验证错误率: %.2f%%\n", float64(atomic.LoadInt64(&sc.verifyErrors))*100/float64(atomic.LoadInt64(&sc.verifyOps)))
+		}
 	}
 
 	fmt.Println("\n=== 延迟分析 ===")
 	fmt.Println("传感器数据上报:")
 	sc.sensorDataStats.PrintDistribution()
-	fmt.Println("\n传感器读写操作:")
-	sc.sensorRWStats.PrintDistribution()
-	fmt.Println("\n批量操作:")
-	sc.batchRWStats.PrintDistribution()
-	fmt.Println("\n查询操作:")
-	sc.queryStats.PrintDistribution()
 	fmt.Println("\n验证操作:")
 	sc.verifyStats.PrintDistribution()
-
-	if atomic.LoadInt64(&sc.verifyErrors) > 0 {
-		panic("verify errors 查询数据库落盘存在问题，禁止上报数据")
-	}
 }
 
 // GetStatsReport 生成符合 model.StatsReport 格式的统计报告，用于数据上报
@@ -569,12 +481,6 @@ func (sc *Collector) GetStatsReport() *model.StatsReport {
 	// 获取各操作类型的统计数据
 	sensorDataOps := atomic.LoadInt64(&sc.sensorDataOps)
 	sensorDataErrors := atomic.LoadInt64(&sc.sensorDataErrors)
-	sensorRWOps := atomic.LoadInt64(&sc.sensorRWOps)
-	sensorRWErrors := atomic.LoadInt64(&sc.sensorRWErrors)
-	batchRWOps := atomic.LoadInt64(&sc.batchRWOps)
-	batchRWErrors := atomic.LoadInt64(&sc.batchRWErrors)
-	queryOps := atomic.LoadInt64(&sc.queryOps)
-	queryErrors := atomic.LoadInt64(&sc.queryErrors)
 
 	// 计算性能指标
 	avgSentQPS := float32(0)
@@ -596,36 +502,18 @@ func (sc *Collector) GetStatsReport() *model.StatsReport {
 			Operations: sensorDataOps,
 			Errors:     sensorDataErrors,
 		},
-		SensorRW: model.OperationStat{
-			Operations: sensorRWOps,
-			Errors:     sensorRWErrors,
-		},
-		BatchRW: model.OperationStat{
-			Operations: batchRWOps,
-			Errors:     batchRWErrors,
-		},
-		Query: model.OperationStat{
-			Operations: queryOps,
-			Errors:     queryErrors,
-		},
 	}
 
 	// 构建延迟分析
 	latencyAnalysis := model.LatencyAnalysis{
 		SensorData: sc.buildLatencyDistribution(sc.sensorDataStats),
-		SensorRW:   sc.buildLatencyDistribution(sc.sensorRWStats),
-		BatchRW:    sc.buildLatencyDistribution(sc.batchRWStats),
-		Query:      sc.buildLatencyDistribution(sc.queryStats),
 	}
 
 	// 构建高优先级请求统计
 	var highPriorityStats *model.HighPriorityStats
 	_, _, _, _, sensorDataHighCount := sc.sensorDataStats.GetHighPriorityStats()
-	_, _, _, _, sensorRWHighCount := sc.sensorRWStats.GetHighPriorityStats()
-	_, _, _, _, batchRWHighCount := sc.batchRWStats.GetHighPriorityStats()
-	_, _, _, _, queryHighCount := sc.queryStats.GetHighPriorityStats()
 
-	totalHighPriorityCount := sensorDataHighCount + sensorRWHighCount + batchRWHighCount + queryHighCount
+	totalHighPriorityCount := sensorDataHighCount
 
 	if totalHighPriorityCount > 0 {
 		percentage := float32(0)
@@ -636,22 +524,69 @@ func (sc *Collector) GetStatsReport() *model.StatsReport {
 		highPriorityStats = &model.HighPriorityStats{
 			TotalCount:      totalHighPriorityCount,
 			SensorDataCount: sensorDataHighCount,
-			SensorRWCount:   sensorRWHighCount,
-			BatchRWCount:    batchRWHighCount,
-			QueryCount:      queryHighCount,
 			Percentage:      percentage,
 		}
 	}
 
+	// 计算总平均延迟
+	totalAvgLatency := float64(0)
+	totalLatencySum := float64(0)
+	totalLatencyCount := int64(0)
+
+	// 汇总所有操作类型的延迟统计
+	sensorDataAvg, _, _, _ := sc.sensorDataStats.GetStats()
+
+	if sensorDataOps > 0 {
+		totalLatencySum += sensorDataAvg * float64(sensorDataOps)
+		totalLatencyCount += sensorDataOps
+	}
+
+	if totalLatencyCount > 0 {
+		totalAvgLatency = totalLatencySum / float64(totalLatencyCount)
+	}
+
+	// 计算高优先级请求总平均延迟
+	highPriorityAvgDelayLatency := float64(0)
+	highPriorityLatencySum := float64(0)
+	highPriorityLatencyCount := int64(0)
+
+	// 汇总所有操作类型的高优先级延迟统计
+	sensorDataHighAvg, _, _, _, sensorDataHighOps := sc.sensorDataStats.GetHighPriorityStats()
+	verifyHighAvg, _, _, _, verifyHighOps := sc.verifyStats.GetHighPriorityStats()
+
+	if sensorDataHighOps > 0 {
+		highPriorityLatencySum += sensorDataHighAvg * float64(sensorDataHighOps)
+		highPriorityLatencyCount += sensorDataHighOps
+	}
+
+	if verifyHighOps > 0 {
+		highPriorityLatencySum += verifyHighAvg * float64(verifyHighOps)
+		highPriorityLatencyCount += verifyHighOps
+	}
+
+	if highPriorityLatencyCount > 0 {
+		highPriorityAvgDelayLatency = highPriorityLatencySum / float64(highPriorityLatencyCount)
+	}
+
+	totalAvgLatencyF32 := float32(totalAvgLatency)
+	highPriorityAvgDelayLatencyF32 := float32(highPriorityAvgDelayLatency)
+	totalVerifyErrorRateF32 := float32(0)
+	if atomic.LoadInt64(&sc.verifyOps) > 0 {
+		totalVerifyErrorRateF32 = float32(atomic.LoadInt64(&sc.verifyErrors)) / float32(atomic.LoadInt64(&sc.verifyOps))
+	}
+
 	// 构建最终报告
 	report := &model.StatsReport{
-		TotalElapsed:    float32(totalElapsed),
-		TotalSent:       totalSent,
-		TotalOps:        totalOps,
-		TotalErrors:     totalErrors,
-		Pending:         pending,
-		Operations:      operationsStats,
-		LatencyAnalysis: latencyAnalysis,
+		TotalElapsed:                float32(totalElapsed),
+		TotalSent:                   totalSent,
+		TotalOps:                    totalOps,
+		TotalErrors:                 totalErrors,
+		TotalAvgLatency:             &totalAvgLatencyF32,
+		TotalVerifyErrorRate:        &totalVerifyErrorRateF32,
+		HighPriorityAvgDelayLatency: &highPriorityAvgDelayLatencyF32,
+		Pending:                     pending,
+		Operations:                  operationsStats,
+		LatencyAnalysis:             latencyAnalysis,
 		PerformanceMetrics: model.PerformanceMetrics{
 			AvgSentQPS:      avgSentQPS,
 			AvgCompletedQPS: avgCompletedQPS,

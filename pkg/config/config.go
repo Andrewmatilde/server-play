@@ -44,8 +44,6 @@ type Config struct {
 	ReportURL string `json:"report_url"` // 上报URL
 	ReportKey string `json:"report_key"` // 上报密钥
 
-	// 内部计算字段
-	totalRatio         float64       `json:"-"`
 	durationTime       time.Duration `json:"-"`
 	reportIntervalTime time.Duration `json:"-"`
 }
@@ -113,11 +111,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("并发数必须大于0")
 	}
 
-	// 验证比例总和
-	if c.totalRatio <= 0 || c.totalRatio > 1.0 {
-		return fmt.Errorf("操作比例总和必须在(0,1]范围内，当前为: %.3f", c.totalRatio)
-	}
-
 	// 验证键值范围
 	if c.KeyRange <= 0 {
 		return fmt.Errorf("设备ID范围必须大于0")
@@ -136,7 +129,6 @@ func (c *Config) Print() {
 	} else {
 		fmt.Printf("并发协程数: %d\n", c.Concurrency)
 	}
-	fmt.Printf("  总比例: %.2f\n", c.totalRatio)
 	fmt.Printf("设备ID范围: %d\n", c.KeyRange)
 	fmt.Printf("数据大小: 64 字节（固定）\n")
 	fmt.Printf("报告间隔: %d 秒\n", c.ReportInterval)

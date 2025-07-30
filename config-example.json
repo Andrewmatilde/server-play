@@ -1,0 +1,15 @@
+{
+  "server_url": "http://localhost:8080",
+  "duration_seconds": 60,
+  "mode": "qps",
+  "qps": 100,
+  "sensor_data_ratio": 0.4,
+  "sensor_rw_ratio": 0.3,
+  "batch_rw_ratio": 0.2,
+  "query_ratio": 0.1,
+  "key_range": 1000,
+  "report_interval": 5,
+  "mysql_dsn": "",
+  "report_url": "http://monitoring-server/api/stats",
+  "report_key": "your-team-key"
+} 

@@ -9,5 +9,8 @@
   "batch_rw_ratio": 0.1,
   "query_ratio": 0.05,
   "key_range": 1000,
-  "report_interval": 1
+  "report_interval": 1,
+  "mysql_dsn": "root@tcp(10.23.69.193:3306)/bench_server",
+  "report_url": "http://106.75.213.115:8080/api/stats/report",
+  "report_key": "team2"
 }

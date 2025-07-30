@@ -29,7 +29,7 @@ type Config struct {
 	Duration  int    `json:"duration_seconds"` // 使用秒数，方便配置文件
 
 	// 流量控制配置
-	Mode        string `json:"mode"`        // "qps" 或 "concurrency"
+	Mode        string `json:"mode"` // "qps" 或 "concurrency"
 	QPS         int    `json:"qps"`
 	Concurrency int    `json:"concurrency"`
 
@@ -40,11 +40,15 @@ type Config struct {
 	QueryRatio      float64 `json:"query_ratio"`       // 查询操作比例
 
 	// 数据配置
-	KeyRange       int `json:"key_range"`        // 设备ID范围
-	ReportInterval int `json:"report_interval"`  // 报告间隔（秒）
+	KeyRange       int `json:"key_range"`       // 设备ID范围
+	ReportInterval int `json:"report_interval"` // 报告间隔（秒）
 
 	// MySQL配置
 	MySQLDSN string `json:"mysql_dsn"` // MySQL数据源名称
+
+	// 上报配置
+	ReportURL string `json:"report_url"` // 上报URL
+	ReportKey string `json:"report_key"` // 上报密钥
 
 	// 内部计算字段
 	totalRatio         float64       `json:"-"`
@@ -129,7 +133,6 @@ func (c *Config) Validate() error {
 	if c.SensorDataRatio < 0 || c.SensorRWRatio < 0 || c.BatchRWRatio < 0 || c.QueryRatio < 0 {
 		return fmt.Errorf("所有操作比例必须大于等于0")
 	}
-
 
 	// 验证键值范围
 	if c.KeyRange <= 0 {

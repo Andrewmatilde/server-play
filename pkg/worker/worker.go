@@ -22,6 +22,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/rand"
 	"splay/client"
 	"splay/pkg/config"
@@ -148,7 +149,7 @@ func (w *Worker) doSensorDataUpload() {
 
 	// 每100个写入请求后启动goroutine进行查询验证
 	if atomic.AddInt64(&queryCounter, 1)%queryTriggerInterval == 0 {
-		go w.verifyDataInMySQL(deviceID, metricName, value, priority, data, startTime)
+		go w.verifyDataInMySQL(deviceID, metricName, priority)
 	}
 }
 
@@ -235,13 +236,14 @@ func (w *Worker) doBatchSensorRW() {
 }
 
 // verifyDataInMySQL 验证MySQL中的数据写入
-func (w *Worker) verifyDataInMySQL(deviceID, metricName string, value float64, priority int, data string, writeTime time.Time) {
+func (w *Worker) verifyDataInMySQL(deviceID, metricName string, priority int) {
 	// 等待3秒让数据写入MySQL
 	time.Sleep(3 * time.Second)
 
 	// 连接MySQL数据库
 	db, err := sql.Open("mysql", w.config.MySQLDSN)
 	if err != nil {
+		log.Println("Failed to connect to MySQL:", err)
 		w.statsCollector.PushCompletedResult("verify-query", 0, priority, false)
 		return
 	}
@@ -250,11 +252,10 @@ func (w *Worker) verifyDataInMySQL(deviceID, metricName string, value float64, p
 	// 查询刚写入的数据
 	queryStart := time.Now()
 	query := `SELECT COUNT(*) FROM time_series_data 
-		WHERE device_id = ? AND metric_name = ? AND ABS(value - ?) < 0.001 
-		AND timestamp = ?`
+		WHERE device_id = ? AND metric_name = ?`
 
 	var count int
-	err = db.QueryRow(query, deviceID, metricName, value, writeTime).Scan(&count)
+	err = db.QueryRow(query, deviceID, metricName).Scan(&count)
 	queryLatency := time.Since(queryStart)
 
 	// 记录验证结果

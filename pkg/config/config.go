@@ -116,6 +116,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("设备ID范围必须大于0")
 	}
 
+	if c.ReportKey == "" {
+		return fmt.Errorf("上报密钥不能为空")
+	}
+
 	return nil
 }
 
